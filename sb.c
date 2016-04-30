@@ -54,7 +54,7 @@ int procuraTabelaSimbolos (tabsimb* ts, contadores* cont, char* token);
 tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, flags* flg, tabdef* td, int auxs, contadores* cont, tabdir* dir, tabinstr* instr, int* sectionend);
 tabdef* incluiTabelaDefinicao (tabdef* td, contadores* cont, char* token); 
 int procuraSomaVetor(char* fonte, contadores* cont, flags* flg, int copy); 
-panalise analisaLinhaText(char* fonte, contadores* cont, flags* flg, tabsimb* ts, tabdir* dir, tabdef* td, tabinstr* instr, objeto* obj, tabuso* tu); /*ESTÁ COM ALGUM ERRO!*/
+panalise analisaLinhaText(char* fonte, contadores* cont, flags* flg, tabsimb* ts, tabdir* dir, tabdef* td, tabinstr* instr, objeto* obj, tabuso* tu); 
 /****************************************************************************************************************************************/
 
 
@@ -274,8 +274,8 @@ tabdir* montaTabelaDiretivas() {
 	return td;
 }
 
-/*Structs de Tabelas**********************************************************************************************************************/
-/*****************************************************************************************************************************************/
+/*Structs de Tabelas*********************************************************************************************************************/
+/****************************************************************************************************************************************/
 
 struct tabsimb {
 	char simbolo[100]; /*símbolo do(a) rótulo/variável (pode ter no máximo 100 caracteres) AINDA EXISTE A POSSIBILIDADE DE EU MUDAR ISSO PARA UM PONTEIRO E FAZER O MALLOC NA HORA!!!! USAR VARIÁVEL AUXILIAR NESSE CASOOOOOO*/
@@ -317,6 +317,7 @@ struct objeto {		/*Vetor que irá representar o código objeto*/
 	int codigo;	/*Quando criado, provavelmente terá 216 posições (definido como o máximo de endereços de memória disponível)*/
 	int somar;	/*Para o caso de diretivas X+2, preciso saber o quanto preciso somar*/
 	int relativo;	/*Define se o endereço é relativo ou não*/
+	int linha;
 };
 
 typedef struct objeto objeto;
@@ -327,6 +328,7 @@ struct flags {
 	int temstop;
 	int begin;
 	int end;
+	int fimtext;
 };
 
 typedef struct flags flags;
@@ -339,13 +341,13 @@ struct panalise {			/*Struct para lidar com retornos de novos ponteiros caso eu 
 };					/*de analisaLinhaText*/
 
 typedef struct panalise panalise;
-/*****************************************************************************************************************************************/
-/*****************************************************************************************************************************************/
+/****************************************************************************************************************************************/
+/****************************************************************************************************************************************/
 
-/*Funções Auxiliares**********************************************************************************************************************/
-/*****************************************************************************************************************************************/
+/*Funções Auxiliares*********************************************************************************************************************/
+/****************************************************************************************************************************************/
 
-/*TESTADO(2)*/
+
 void pulaEspacos(char* fonte, contadores* cont) {	/*Função criada para ignorar espaços*/
 
 	int i=(*cont).pontodeleitura;			/*Pegamos o ponto de leitura*/
@@ -360,7 +362,7 @@ void pulaEspacos(char* fonte, contadores* cont) {	/*Função criada para ignorar
 }
 
 
-/*TESTADO(2)*/
+
 void transformaMaiusculo (char* token, int comprimento) { /*TESTADO*/
 	int i; /*variável auxiliar do loop*/
 
@@ -371,7 +373,7 @@ void transformaMaiusculo (char* token, int comprimento) { /*TESTADO*/
 	}					    /*só envolve LETRAS*/
 }
 
-/*TESTADO*/
+
 void inicializaContadores (contadores* cont) {	     /*Função auxiliar para zerar os contadores (no início são todos zero)*/
 	
 	(*cont).pontodeleitura = 0;
@@ -382,7 +384,7 @@ void inicializaContadores (contadores* cont) {	     /*Função auxiliar para zer
 	(*cont).tamtu = 0;
 }
 
-/*TESTADO*/
+
 void inicializaFlags (flags* flg) {
 
 	(*flg).erro = 0;
@@ -390,7 +392,19 @@ void inicializaFlags (flags* flg) {
 	(*flg).temstop = 0;
 	(*flg).begin = 0;
 	(*flg).end = 0;
+	(*flg).fimtext = 0;
+}
 
+void inicializaObjeto(objeto* obj) {
+
+	int i;
+	
+	for(i=0;i<215;i++) {
+		obj[i].codigo = 0;
+		obj[i].somar = 0;
+		obj[i].relativo = 0;
+		obj[i].linha = 0;
+	}
 }
 /****************************************************************************************************************************************/
 /****************************************************************************************************************************************/
@@ -405,11 +419,11 @@ char* pegaToken(char* fonte, contadores* cont) {
 
 	int i = (*cont).pontodeleitura, j=(*cont).pontodeleitura;
 	char* token;
-	while(fonte[i] != '\n' && fonte[i] != '\t' && fonte[i] != ' ' && fonte[i] != '\r') { i++; }
+	while(fonte[i] != '\n' && fonte[i] != '\t' && fonte[i] != ' ' && fonte[i] != '\r' && fonte[i] != '\0' ) { i++; }
 	i = i - j;
-	token = (char*) malloc(i*sizeof(char) + 1); /*A CULPA É DESTE FILHO DA PUTA*/
+	token = (char*) malloc((i+1)*sizeof(char)); 
 	i = 0;
-	while(fonte[j] != '\n' && fonte[j] != '\t' && fonte[j] != ' ' && fonte[j] != '\r') {
+	while(fonte[j] != '\n' && fonte[j] != '\t' && fonte[j] != ' ' && fonte[j] != '\r' && fonte[j] != '\0') {
 		token[i] = fonte[j];
 		i++;
 		j++;
@@ -433,7 +447,7 @@ int encontraSectionText(char* fonte, contadores* cont) { /*A primeira coisa que 
 		}
 		else {
 			(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
-			free(token);
+//			free(token);
 			pulaEspacos(fonte,cont);
 			token = pegaToken(fonte,cont);
 			transformaMaiusculo(token,strlen(token));
@@ -444,7 +458,7 @@ int encontraSectionText(char* fonte, contadores* cont) { /*A primeira coisa que 
 				}
 				else {
 					(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
-					free(token);
+//					free(token);
 					return 0;
 				}
 		}
@@ -658,7 +672,7 @@ tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, f
 					printf("Erro sintático, linha %d: SECTION sem argumento\n", (*cont).contadorlinha);		
 				}
 		}
-		free(token);
+//		free(token);
 	}
 	if(posdirtab==CONST || posdirtab==SPACE) {
 		printf("Erro sintático, linha %d: diretivas da seção de dados na seção de texto\n", (*cont).contadorlinha);		
@@ -672,7 +686,7 @@ tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, f
 				(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token); /*do espaço/valor pois é um erro*/
 				/*Fazemos nada depois pois o próximo token será lido normalmente*/
 			}
-		free(token);
+//		free(token);
 	}
 	if(posdirtab==PUBLIC) {
 		(*cont).pontodeleitura = (*cont).pontodeleitura + strlen("PUBLIC"); /*Atualizando o ponto de leitura*/	
@@ -703,8 +717,8 @@ tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, f
 			printf("Erro sintático, linha %d: diretiva PUBLIC não apresenta seus argumentos\n", (*cont).contadorlinha);
 			(*flg).erro++;
 		}
-		free(token);
-		free(token1);
+//		free(token);
+//		free(token1);
 	}
 
 	return td; /*retornamos a tabela de definições possivelmente atualizada*/
@@ -721,7 +735,7 @@ int procuraSomaVetor(char* fonte, contadores* cont, flags* flg, int copy) {
 	if (!strcmp(token, "+")) {	/*Vemos se o token é o elemento de soma*/
 		(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token); /*Se for, atualizamoso ponto de leitura e procuramos*/
 		pulaEspacos(fonte, cont);					 /*o operando do elemento de soma*/
-		free(token);		
+//		free(token);		
 		token = pegaToken(fonte, cont);
 			if(copy) {
 				if(token[strlen(token)-1] == ',') {
@@ -730,7 +744,7 @@ int procuraSomaVetor(char* fonte, contadores* cont, flags* flg, int copy) {
 					i = atoi(token1); 
 				}
 				else {
-				     printf("Erro sintático, linha %d: primeiro argumento não seguido de vírgula", (*cont).contadorlinha);
+				     printf("Erro sintático, linha %d: primeiro argumento não seguido de vírgula\n", (*cont).contadorlinha);
 				     	i = atoi(token); /*Vemos se esse operando pode ser transformado em inteiro*/
 				}
 			}
@@ -751,11 +765,11 @@ int procuraSomaVetor(char* fonte, contadores* cont, flags* flg, int copy) {
 			printf("Erro sintático, linha %d: operador de soma sem operando\n", (*cont).contadorlinha);
 			((*flg).erro)++;	/*Apenas indicamos o erro e teremos que avaliar esse token novamente*/	
 		}
-		free(token);
+//		free(token);
 		return i;
 	}
 	else {
-		free(token);
+//		free(token);
 		return 0;
 	}
 }
@@ -794,7 +808,7 @@ void trataCOPY(char* fonte, objeto* obj, contadores* cont, panalise* retorno, fl
 						}
 					}
 					else {  /*Se não está na tabela, precisamos incluir como não definido*/
-						free(token1);
+//						free(token1);
 						token1 = (char*) malloc ((strlen(token))*sizeof(char));					
 						memmove(token1, token, strlen(token)-1);						
 						(*retorno).ts = incluiTabelaSimbolos(ts,cont,token1,0,(*cont).contadorinstr);
@@ -810,6 +824,7 @@ void trataCOPY(char* fonte, objeto* obj, contadores* cont, panalise* retorno, fl
 				obj[(*cont).contadorinstr].somar = 0;		
 			}
 			obj[(*cont).contadorinstr].relativo = 1; /*indicamos que o símbolo é um endereço relativo*/
+			obj[(*cont).contadorinstr].linha = (*cont).contadorlinha; /*colocamos a linha em que apareceu*/
 			(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
 			((*cont).contadorinstr)++;
 		}
@@ -855,6 +870,7 @@ void trataCOPY(char* fonte, objeto* obj, contadores* cont, panalise* retorno, fl
 					(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
 					k = procuraSomaVetor(fonte, cont, flg,1);
 					obj[(*cont).contadorinstr].somar = k; /*Colocamos a soma no objeto para referências futuras*/
+					obj[(*cont).contadorinstr].linha = (*cont).contadorlinha; /*colocamos a linha em que apareceu*/
 					((*cont).contadorinstr)++; /*atualizando...*/
 					//free(token);
 					//free(token1);
@@ -902,6 +918,7 @@ void trataCOPY(char* fonte, objeto* obj, contadores* cont, panalise* retorno, fl
 			(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
 			k = procuraSomaVetor(fonte, cont, flg, 0);
 			obj[(*cont).contadorinstr].somar = k; /*Colocamos a soma no objeto para referências futuras*/
+			obj[(*cont).contadorinstr].linha = (*cont).contadorlinha; /*colocamos a linha em que apareceu*/
 			((*cont).contadorinstr)++; /*atualizando...*/
 		}
 //		//free(token);
@@ -918,6 +935,7 @@ void trataInstrucaoText(char* fonte, objeto* obj, contadores* cont, panalise* re
 		obj[(*cont).contadorinstr].codigo = posinstrtab+1; /*colocando o código da instrução no objeto*/
 		obj[(*cont).contadorinstr].somar = 0;	      /*não precisamos somar nada à esse valor, é uma instrução*/
 		obj[(*cont).contadorinstr].relativo = 0;	      /*não é relativo*/
+		obj[(*cont).contadorinstr].linha = (*cont).contadorlinha; /*colocamos a linha em que apareceu*/
 		((*cont).contadorinstr)++;
 		(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(instr[posinstrtab].instrucao);	
 		/*OBS.: A CORRETUDE DO VALOR DE SOMA SERÁ TRATADA DEPOIS!!!*/
@@ -963,6 +981,7 @@ void trataInstrucaoText(char* fonte, objeto* obj, contadores* cont, panalise* re
 				(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
 				k = procuraSomaVetor(fonte, cont, flg,0);
 				obj[(*cont).contadorinstr].somar = k; /*Colocamos a soma no objeto para referências futuras*/
+				obj[(*cont).contadorinstr].linha = (*cont).contadorlinha; /*colocamos a linha em que apareceu*/
 				(*cont).contadorinstr = (*cont).contadorinstr + instr[posinstrtab].operandos; /*atualizando...*/
 			}
 			//free(token);
@@ -1025,6 +1044,7 @@ panalise analisaLinhaText(char* fonte, contadores* cont, flags* flg, tabsimb* ts
 			}							/*Ignoramos ele e seguimos em frente com a tradução*/
 		}
 	//free(token);	
+	(*flg).fimtext = (*cont).contadorinstr;
 	return retorno;
 }
 
@@ -1046,6 +1066,7 @@ void trataDiretivaData(char* fonte, objeto* obj, contadores* cont, flags* flg, t
 					obj[(*cont).contadorinstr].codigo = n; /*atualizamos aquele */
 					obj[(*cont).contadorinstr].somar = 0;  /*não é necessário somar nada*/
 					obj[(*cont).contadorinstr].relativo = 0; /*não é relativo*/
+					obj[(*cont).contadorinstr].linha = (*cont).contadorlinha; /*colocamos a linha em que apareceu*/
 					((*cont).contadorinstr)++;
 					(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token); /*atualizamos o ponto de leitura*/
 				}				
@@ -1072,7 +1093,8 @@ void trataDiretivaData(char* fonte, objeto* obj, contadores* cont, flags* flg, t
 					if((*cont).contadorinstr < 216) {					
 						obj[(*cont).contadorinstr].codigo = 0; 
 						obj[(*cont).contadorinstr].somar = 0;
-						obj[(*cont).contadorinstr].relativo = 0;
+						obj[(*cont).contadorinstr].relativo = n; /*Pra eu saber quanto espaço tem, farei > 1*/
+						obj[(*cont).contadorinstr].linha = (*cont).contadorlinha;
 						((*cont).contadorinstr)++;
 					}
 					else {
@@ -1114,13 +1136,17 @@ tabsimb* analisaLinhaData(char* fonte, contadores* cont, objeto* obj, flags* flg
 	char* token;
 	tabsimb* simb;
 
+	simb = ts;
 	pulaEspacos(fonte, cont);	
 	token = pegaToken(fonte, cont);
-	transformaMaiusculo(token, strlen(token));
-	r = verificaRotulo(token, cont);
-	d = procuraDiretiva(token, dir);
+
+	if(strlen(token)>0) {			
+		transformaMaiusculo(token, strlen(token));
+		r = verificaRotulo(token, cont);
+		d = procuraDiretiva(token, dir);
 		if(r>=0) {	/*Se é um rótulo, vemos se ele já existe*/
-			(*flg).erro = (*flg).erro + r;			
+			(*flg).erro = (*flg).erro + r;	
+			token[strlen(token)-1] = '\0';
 			s = procuraTabelaSimbolos(ts,cont,token);
 			if (s>=0) { /*Se ele existe*/
 				if(ts[s].definido) { /*Se ele já está definido, temos um erro*/
@@ -1131,11 +1157,14 @@ tabsimb* analisaLinhaData(char* fonte, contadores* cont, objeto* obj, flags* flg
 					ts[s].definido=1; /*Indicamos que a partir de agora ele está definido*/
 					ts[s].endereco=(*cont).contadorinstr; /*E atualizamos o endereço dele*/				
 				}
+				(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token) + 1;				
 			}
 			else { /*Se ele não existe*/
 				simb=incluiTabelaSimbolos (ts, cont, token, 1, (-1)); /*Incluimos na tabela de símbolos*/
 				ts = simb; 
-				(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);				
+				(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token) + 1;
+			}				
+				
 				pulaEspacos(fonte, cont);	/*Pegamos o próximo elemento*/
 				//free(token);				
 				token = pegaToken(fonte, cont);
@@ -1146,11 +1175,11 @@ tabsimb* analisaLinhaData(char* fonte, contadores* cont, objeto* obj, flags* flg
 						trataDiretivaData(fonte, obj, cont, flg, dir,instr,d);
 					}
 					else {  		/*Se não é, temos um erro (pois essa é a seção de dados)*/
-						printf("Erro sintático, linha %d: argumento inválido para seção de dados",  							       (*cont).contadorlinha);
+						printf("Erro sintático, linha %d: argumento inválido para seção de dados\n",  							       (*cont).contadorlinha);
 						((*flg).erro)++;  /*Ignoramos então esse símbolo e seguimos em frente atualizando*/
 						(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
 					}
-			}
+			
 			//free(token);
 
 		}
@@ -1183,17 +1212,149 @@ tabsimb* analisaLinhaData(char* fonte, contadores* cont, objeto* obj, flags* flg
 			}
 			//free(token);
 		}
+	}
 
 	return simb;
 }
 
+void arrumaObjeto(objeto* obj, tabsimb* ts, contadores* cont, flags* flg) {
+
+	int i, j, temp, aux;
+
+	for(i=0;i<(*cont).tamts;i++) {	/*Para todos os elementos da tabela de símbolos*/
+		if(ts[i].definido) {	/*Se ele foi definido vamos percorrer a lista de endereços onde ele aparece*/
+			j = ts[i].lastaddr; /*Pegamos o último endereço do objeto em que ele aparece*/
+			while(j!=(-1)) {    /*E enquanto não chegamos no -1*/
+				temp = obj[j].codigo;	/*Colocamos no objeto o valor do endereço + soma*/
+				obj[j].codigo = ts[i].endereco + obj[j].somar;
+				
+				if(obj[(ts[i].endereco)].relativo > 0) { /*Se o que tem no endereço é relativo, pode ser um vetor*/
+					aux = (obj[(ts[i].endereco)].relativo - 1);
+				}
+				else {	/*se é absoluto, então não posso somar nada*/
+					aux = 0;
+					obj[j]. relativo = 0; /*E eu preciso informar que aquele endereço agora tem um endereço ABSOLUTO*/
+				}			      /*SÍMBOLO absoluto só pode ser constante*/
+
+				if(aux < obj[j].somar) { /*Se a soma ultrapassa o espaço do vetor*/
+					printf("Erro semântico, linha %d: acesso à área inválida\n", obj[j].linha);
+					((*flg).erro)++;
+				}
+				obj[j].somar = 0;	/*Soma já feita, atualizamos o valor de soma*/
+
+				if(!obj[j].relativo) { /*Se um SÍMBOLO não é relativo, ele é constante*/
+					/*Símbolo constante, endereço prévio é DIV (opcode = 4 e não é relativo)*/
+					if(obj[(obj[j].codigo)].codigo == 0 && obj[j-1].codigo == 4 && !obj[j-1].relativo) {
+						printf("Erro semântico, linha %d: divisão por 0 (constante %s)\n", obj[j].linha, ts[i].simbolo);
+						((*flg).erro)++;
+					}
+					/*Símbolo constante, endereço prévio é algum JUMP (opcode = 5-8 e não é relativo)*/
+					if((obj[j-1].codigo>4 && obj[j-1].codigo<9) && !obj[j-1].relativo) { 
+						printf("Erro semântico, linha %d: pulo para constante %s\n", obj[j].linha, ts[i].simbolo);
+						((*flg).erro)++;
+					}
+					/*Símbolo constante, 2 endereços prévios é COPY (opcode = 10 e não é relativo)*/
+					if(obj[j-2].codigo == 10 && !obj[j-2].relativo) { /*COPY*/
+						printf("Erro semântico, linha %d: valor da constante %s sendo alterado\n",obj[j].linha, ts[i].simbolo);
+						((*flg).erro)++;
+					}
+					/*Símbolo constante, endereço prévio é STORE ou INPUT (opcode = 11/12 e não é relativo)*/
+					if((obj[j-1].codigo == 11 || obj[j-1].codigo == 12) && !obj[j-1].relativo) { 
+						printf("Erro semântico, linha %d: valor da constante %s sendo alterado\n", obj[j].linha, ts[i].simbolo);
+						((*flg).erro)++;
+					} 
+				}
+				if((obj[j-1].codigo>4 && obj[j-1].codigo<9) && obj[j].codigo>=(*flg).fimtext) {
+					printf("Erro semântico, linha %d: pulo para seção de dados\n", obj[j].linha);
+					((*flg).erro)++;
+				}
+				j = temp;	/*analisado esse endereço, podemos pegar o próximo*/
+			}
+		}
+		else {	/*Se o símbolo não está definido ainda, temos um problema. Ignoramos e passamos para o próximo*/
+			printf("Erro semântico: símbolo %s não definido\n", ts[i].simbolo);
+			((*flg).erro)++;
+		}
+	}
+
+}
 
 
-/*TESTES*********************************************************************************************************************************/
-/****************************************************************************************************************************************/
+void arrumaTabDef(tabsimb* ts, tabdef* td, contadores* cont, flags* flg) { /*Colocando os endereços na tabela de definições*/
 
-int main() {
+	int i, j;
+	char* simbolo;
+
+	for(i=0;i<(*cont).tamtd;i++) { /*Para todos os elementos na tabela de definições*/
+		simbolo = (char*) malloc (sizeof(char)*strlen(td[i].simbolo)); 
+		strcpy(simbolo, td[i].simbolo);
+		j = procuraTabelaSimbolos(ts,cont,simbolo); /*Procuramos o símbolo em TD na TS*/
+		if(j>=0) {  /*Se ele existe*/
+			if(ts[j].definido) { /*E está definido, podemos atualizar TD*/	
+				td[i].endereco = ts[j].endereco;
+			}
+			else { /*Mas não foi definido, não podemos atualizar TD*/
+				printf("Erro semântico: símbolo público %s não definido\n", td[i].simbolo);
+				((*flg).erro)++;
+			}
+		}
+		else { /*Se o símbolo nem foi encontrado na TS então (apesar de que isso não deve acontecer, mas enfim...)*/
+			printf("Erro semântico: símbolo público %s não definido\n", td[i].simbolo);
+			((*flg).erro)++;
+		}
+	}
+}
+
+void printObjeto(objeto* obj, tabdef* td, tabuso* tu, char* arquivo, contadores* cont, flags* flg) { 	
+	
+	FILE* fp;
 	int i;
+	char* narq = (char*) malloc (sizeof(char)*(4+strlen(arquivo)));
+
+	strcpy(narq, arquivo);
+	strcat(narq, ".txt");	
+
+	fp = fopen(narq, "w+");
+	
+	if(fp==NULL) {
+		printf("\nImpossível gerar o arquivo objeto. Não há espaço disponível\n");
+	}
+	else {
+		if((*flg).modulo) {
+			fprintf(fp, "TABLE USE\n");
+			for(i=0;i<(*cont).tamtu;i++) {
+				fprintf(fp, "%s %d\n", tu[i].simbolo, tu[i].endcod);
+			}
+			fprintf(fp,"\n");
+			fprintf(fp, "TABLE DEFINITION\n");
+			for(i=0;i<(*cont).tamtd;i++) {
+				fprintf(fp, "%s %d\n", td[i].simbolo, td[i].endereco);
+			}
+			fprintf(fp,"\n");
+			fprintf(fp, "RELATIVES\n");
+			for(i=0;i<(*cont).contadorinstr;i++) {
+				if(obj[i].relativo>0) {			
+					fprintf(fp, "%d ", i);
+				}
+			}
+			fprintf(fp,"\n\n");
+			fprintf(fp, "CODE\n");
+		}
+		for(i=0;i<(*cont).contadorinstr;i++) {	
+			if(obj[i].codigo < 10) {
+				fprintf(fp, "0");
+			}	
+			fprintf(fp, "%d ", obj[i].codigo);
+		}
+		fprintf(fp,"\n");
+	}
+	
+	fclose(fp);
+//	free(narq);	
+}
+
+void monta(char* fonte, char* arquivo) {
+	
 	tabinstr* instr;
 	tabdir* dir;
 	tabsimb* ts = (tabsimb*) malloc (sizeof(tabsimb));
@@ -1201,41 +1362,60 @@ int main() {
 	tabuso* tu = (tabuso*) malloc (sizeof(tabuso));
 	contadores cont;
 	flags flg;
-	char fonte[200];
-	objeto obj[216];
+	objeto* obj = (objeto*) calloc (216,sizeof(obj));
 	panalise retorno;
 	instr = montaTabelaInstrucoes();
 	dir = montaTabelaDiretivas();
 	inicializaContadores(&cont);
 	inicializaFlags(&flg);
-//	strcpy(fonte, "ROT: SPACE 3 ");
-//	ts = analisaLinhaData(fonte, &cont, obj, &flg, dir, instr, ts);
-//	printf("\nPonto de leitura: %d\n",cont.pontodeleitura);
-//	printf("\nPonto de programa: %d\n", cont.contadorinstr);
-//	for(i=0;i<cont.contadorinstr;i++) {
-//		printf(" %d ", obj[i].codigo);
-//	}
-//	printf("\n");
-//	printf("\nTabela Símbolos: %s %d %d %d %d\n", ts[0].simbolo, ts[0].definido, ts[0].externo, ts[0].lastaddr, ts[0].endereco);
-	strcpy(fonte, "TAB: COPY A + 2, C + 3");
-	retorno = analisaLinhaText(fonte, &cont, &flg, ts, dir, td, instr, obj, tu);
-	ts = retorno.ts;
-	td = retorno.td;
-	printf("\nPonto de leitura: %d\n",cont.pontodeleitura);
-	printf("\nPonto de programa: %d\n", cont.contadorinstr);
-	printf("\nTabela Símbolos: %s %d %d %d %d\n", ts[0].simbolo, ts[0].definido, ts[0].externo, ts[0].lastaddr, ts[0].endereco);
-	printf("\nTabela Símbolos: %s %d %d %d %d\n", ts[1].simbolo, ts[1].definido, ts[1].externo, ts[1].lastaddr, ts[1].endereco);
-	printf("\nTabela Símbolos: %s %d %d %d %d\n", ts[2].simbolo, ts[2].definido, ts[2].externo, ts[2].lastaddr, ts[2].endereco);
-//	printf("\nTabela Definição: %s %d\n", td[0].simbolo, td[0].endereco);
-	for(i=0;i<cont.contadorinstr;i++){
-		printf("(%d,%d,%d)",obj[i].codigo,obj[i].somar,obj[i].relativo);
-	}
-	printf("\n\n");
-	free(dir);
-	free(instr);
-	free(ts);	
-	return 0;
+//	inicializaObjeto(obj);
+	retorno.sectionend = 0;
+	flg.erro = flg.erro + encontraSectionText(fonte, &cont);
+		while(!retorno.sectionend && fonte[cont.pontodeleitura] != '\0') { 
+			retorno = analisaLinhaText(fonte, &cont, &flg, ts, dir, td, instr, obj, tu);
+			ts = retorno.ts;
+			td = retorno.td;
+		}
+		if(!retorno.sectionend && fonte[cont.pontodeleitura] == '\0') {
+			printf("Erro sintático, linha %d: não há seção de dados\n", cont.contadorlinha);
+		}
+		else {
+			while(fonte[cont.pontodeleitura] != '\0') {
+				ts = analisaLinhaData(fonte, &cont, obj, &flg, dir, instr, ts);
+			}
+		}
+	arrumaObjeto(obj, ts, &cont, &flg);
+	arrumaTabDef(ts, td, &cont, &flg);
+		if(flg.erro == 0) {
+			printObjeto(obj, td, tu, arquivo, &cont, &flg);
+		}
+		else {
+			printf("\nImpossível montar arquivo objeto. Por favor, corrija os erros e tente novamente\n");
+		}
 
+//	free(ts);
+//	free(td);
+//	free(tu);
+//	free(obj);
+
+}
+/*TESTES*********************************************************************************************************************************/
+/****************************************************************************************************************************************/
+
+int main() {
+
+//	char* fonte;
+//	char* arquivo;
+//
+//	fonte = (char*) malloc(sizeof(char)*200);
+//	arquivo = (char*) malloc (sizeof(char)*6);
+//
+//	strcpy(arquivo,"teste");
+//	strcpy(fonte,"SECTION TEXT\n M: BEGIN\n\nPUBLIC N\nPUBLIC J\n INPUT N\nJMP M\n STOP\nEND\nSection Data\nN: space 1\nJ: CONST 0\0");
+
+//	monta(fonte, arquivo);
+	return 0;
+ 
 }
 
 
