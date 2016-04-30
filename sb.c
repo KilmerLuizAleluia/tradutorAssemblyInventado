@@ -750,8 +750,9 @@ int procuraSomaVetor(char* fonte, contadores* cont, flags* flg, int copy) {
 		token = pegaToken(fonte, cont);
 			if(copy) {
 				if(token[strlen(token)-1] == ',') {
-					token1 = (char*) calloc ((strlen(token)),sizeof(char));					
+					token1 = (char*) calloc ((strlen(token)+1),sizeof(char));					
 					memmove(token1, token, strlen(token)-1);
+					token1[strlen(token)] = '\0';
 					i = atoi(token1); 
 				}
 				else {
@@ -795,14 +796,19 @@ void trataCOPY(char* fonte, objeto* obj, contadores* cont, panalise* retorno, fl
 	token = pegaToken(fonte, cont); /*ou que a soma foi inserida sem espaço (token errado)*/
 	transformaMaiusculo(token, strlen(token));
 		if(token[(strlen(token)-1)] == ',') { /*Se o último elemento do token é uma vírgula*/
-			token1 = (char*) calloc ((strlen(token)), sizeof(char));					
-			memmove(token1, token, strlen(token)-1); /*Vemos o que é o token*/		
+			token1 = (char*) calloc ((strlen(token)+1), sizeof(char));					
+			memmove(token1, token, strlen(token)-1); /*Vemos o que é o token*/
+			token1[strlen(token)] = '\0';
 			k = procuraDiretiva(token1, dir);
 			l = procuraInstrucao(token1,instr);	   	
 			s = verificaRotulo(strcat(token1, ":"),cont);
 			if(k<0 && l<0) { /*Se ele não é uma palavra reservada*/
 				if(s>=0) {	/*e é um símbolo*/
 					(*flg).erro = (*flg).erro + s;
+					free(token1);
+					token1 = (char*) calloc ((strlen(token)+1), sizeof(char));					
+					memmove(token1, token, strlen(token)-1);
+					token1[strlen(token)] = '\0';
 					h=procuraTabelaSimbolos (ts, cont, token1);
 					if (h>=0) {	/*Se o símbolo já existe, existem 2 possibilidades*/
 						if(!ts[h].definido) { /*Se o símbolo não é definido, precisamos atualizar a lista*/
@@ -818,10 +824,7 @@ void trataCOPY(char* fonte, objeto* obj, contadores* cont, panalise* retorno, fl
 							tu = (*retorno).tu;
 						}
 					}
-					else {  /*Se não está na tabela, precisamos incluir como não definido*/
-//						free(token1);
-						token1 = (char*) calloc ((strlen(token)),sizeof(char));					
-						memmove(token1, token, strlen(token)-1);						
+					else {  /*Se não está na tabela, precisamos incluir como não definido*/				
 						(*retorno).ts = incluiTabelaSimbolos(ts,cont,token1,0,(*cont).contadorinstr);
 						ts = (*retorno).ts;
 						obj[(*cont).contadorinstr].codigo = (-1);
@@ -1027,8 +1030,9 @@ panalise analisaLinhaText(char* fonte, contadores* cont, flags* flg, tabsimb* ts
 	r=verificaRotulo(token,cont);
 		if(r>=0) {		      		/*O primeiro elemento da linha é um rótulo*/
 			((*flg).erro) = (*flg).erro + r;/*Caso o rótulo esteja errado, precisamos comunicar o FLAG de erro*/
-			token1 = (char*) calloc ((strlen(token)), sizeof(char));					
-			memmove(token1, token, strlen(token)-1); /*Eliminando os ':' do rótulo*/			
+			token1 = (char*) calloc ((strlen(token)+1), sizeof(char));					
+			memmove(token1, token, strlen(token)-1); /*Eliminando os ':' do rótulo*/
+			token1[strlen(token)] = '\0';			
 			retorno.ts = incluiTabelaSimbolos(ts, cont, token1, 1, -1); /*O 1 indica que o símbolo entra já definido*/
 			ts = retorno.ts;		/*Vai ser necessário atualizar o endereço que a tabela de símbolos aponta!!!*/
 			(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token); 
@@ -1440,8 +1444,8 @@ int main() {
 //	arquivo = (char*) calloc (6, sizeof(char));
 //
 //	strcpy(arquivo,"teste");
-//	strcpy(fonte,"SECTION TEXT\nLOAD J\nM:\n\n INPUT N\n\nADD K\nJMPZ M\n\nSTOP\nSection Data\nN: space \nK: space \nJ: CONST 0\0");
-//
+//	strcpy(fonte,"SECTION TEXT\nLOAD J\nM:\n\n INPUT N\nCOPY N, K\nADD K + 2\nJMPZ M\n\nSTOP\nSection Data\nN: space \nK: space 3 \nJ: CONST 0\0");
+
 //	monta(fonte, arquivo);
 	return 0;
  
