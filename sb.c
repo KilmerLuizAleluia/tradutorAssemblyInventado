@@ -421,7 +421,7 @@ char* pegaToken(char* fonte, contadores* cont) {
 	char* token;
 	while(fonte[i] != '\n' && fonte[i] != '\t' && fonte[i] != ' ' && fonte[i] != '\r' && fonte[i] != '\0' ) { i++; }
 	i = i - j;
-	token = (char*) malloc((i+1)*sizeof(char)); 
+	token = (char*) calloc((i+1),sizeof(char)); 
 	i = 0;
 	while(fonte[j] != '\n' && fonte[j] != '\t' && fonte[j] != ' ' && fonte[j] != '\r' && fonte[j] != '\0') {
 		token[i] = fonte[j];
@@ -514,7 +514,8 @@ tabsimb* incluiTabelaSimbolos (tabsimb* ts, contadores* cont, char* token, int d
 	((*cont).tamts)++;    /*Aumentamos o tamanho da tabela de símbolos ao encontrar o rótulo*/
 	auxs = (*cont).tamts -1;/*Valor total de elementos, tiramos um para saber a posição no vetor*/			
 	s = (tabsimb*) realloc (ts, (*cont).tamts * (sizeof(tabsimb))); /*E realocamos o espaço para a tabela de símbolos*/
-	memmove(s[auxs].simbolo, token, strlen(token));/*E passamos os valores adequados para a TS*/
+	strcpy(s[auxs].simbolo, token);/*E passamos os valores adequados para a TS*/
+	s[auxs].simbolo[strlen(token)] = '\0';
 	s[auxs].externo = 0; /*Obs.: AINDA NÃO FOI DEFINIDO SE O SÍMBOLO É EXTERNO OU NÃO!!!*/
  	s[auxs].endereco = (*cont).contadorinstr; 
  	s[auxs].definido = d;  /*O símbolo está definido para o caso de rótulos*/
@@ -538,6 +539,7 @@ tabdef* incluiTabelaDefinicao (tabdef* td, contadores* cont, char* token) {
 	((*cont).tamtd)++;     		/*Atualizando a quantidade de símbolos*/
 	def = (tabdef*) realloc (td, (*cont).tamtd*(sizeof(tabdef))); 
 	strcpy(def[auxd].simbolo, token); /*símbolo incluído na tabela*/
+	def[auxd].simbolo[strlen(token)] = '\0';
 	def[auxd].endereco = (-1);   /*será atualizado no final, quando todos os endereços forem obtidos*/
 
 	return def;
@@ -552,6 +554,7 @@ tabuso* incluiTabelaUso (tabuso* tu, contadores* cont, char* token) {
 	((*cont).tamtu)++;     /*Atualizando a quantidade de símbolos*/
 	uso = (tabuso*) realloc (tu, (*cont).tamtu*(sizeof(tabuso))); 
 	strcpy(uso[auxu].simbolo, token); 		/*símbolo incluído na tabela*/
+	uso[auxu].simbolo[strlen(token)] = '\0';
 	uso[auxu].endcod = (*cont).contadorinstr;   /*o endereço em que ele é usado é aonde está o contador de instrução*/
 
 	return uso;
@@ -598,7 +601,8 @@ int procuraTabelaSimbolos (tabsimb* ts, contadores* cont, char* token) {
 
 tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, flags* flg, tabdef* td, int auxs, contadores* cont, tabdir* dir, tabinstr* instr, int* sectionend) {
 
-	int i, j, k, l,s;
+	int i, j, k, l, s;
+	tabdef* def;
 	char* token;
 	char* token1;	
 	if(posdirtab==EXTERN) {	/*Posição da diretiva EXTERN na tabela*/
@@ -606,7 +610,12 @@ tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, f
 			ts[auxs].externo=1; 	    /*Se é essa a diretiva, atualizamos a tabela de símbolos*/
 		}
 		else {
-			printf("Erro, linha %d: nenhum rótulo associado à diretiva EXTERN\n", (*cont).contadorlinha);
+			printf("Erro sintático, linha %d: nenhum rótulo associado à diretiva EXTERN\n", (*cont).contadorlinha);
+			(*flg).erro++;
+		}
+		if(!(*flg).modulo) {
+			printf("Erro semântico, linha %d: diretiva EXTERN em um programa que não é módulo\n", (*cont).contadorlinha);
+			(*flg).erro++;		
 		}
 		(*cont).pontodeleitura = (*cont).pontodeleitura + strlen("EXTERN");
 	}
@@ -624,11 +633,11 @@ tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, f
 	}
 	if(posdirtab==END) {
 		if(!(*flg).begin) {
-			printf("Erro sintático, linha %d: END sem BEGIN\n",(*cont).contadorlinha);
+			printf("Erro semântico, linha %d: END sem BEGIN\n",(*cont).contadorlinha);
 			(*flg).erro++;
 		}
 		if((*flg).end) {
-			printf("Erro sintático, linha %d: END já definido!\n",(*cont).contadorlinha);
+			printf("Erro semântico, linha %d: END já definido!\n",(*cont).contadorlinha);
 			(*flg).erro++;
 		}
 		(*flg).end++;
@@ -640,10 +649,10 @@ tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, f
 			(*flg).erro++;
 		}
 		if(!((*flg).modulo) && !((*flg).temstop)) {
-			printf("Erro sintático, linha %d: SECTION inicializada mas não há STOP\n", (*cont).contadorlinha);
+			printf("Erro semântico, linha %d: SECTION inicializada mas não há STOP\n", (*cont).contadorlinha);
 		}
 		if((*flg).modulo && !((*flg).end)) {
-			printf("Erro sintático, linha %d: SECTION inicializada mas não há END\n", (*cont).contadorlinha);
+			printf("Erro semântico, linha %d: SECTION inicializada mas não há END\n", (*cont).contadorlinha);
 		}
 		(*cont).pontodeleitura = (*cont).pontodeleitura + strlen("SECTION");
 		pulaEspacos(fonte, cont);	/*verificação se o que segue SECTION é DATA (caso contrário está errado)*/
@@ -697,14 +706,16 @@ tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, f
 		k = procuraDiretiva(token, dir);	   /*vemos se é uma diretiva*/
 		l = procuraInstrucao(token,instr);	   /*vemos se é uma instrução*/
 		j = verificaRotulo(token, cont);	   /*vemos se é um rótulo*/
-		token1 = (char*) malloc ((strlen(token) + 1)*sizeof(char));		
+		token1 = (char*) calloc ((strlen(token) + 2), sizeof(char));	
 		strcpy(token1, token);			   /*pra eu não estragar token incluindo nele um ':'*/
 		s = verificaRotulo(strcat(token1, ":"), cont); /*vemos se é um símbolo válido*/
+		token1[strlen(token1)] = '\0';
 		if(s>=0 && k==(-1) && l==(-1) && j==(-1)) { 
 		/*Símbolo inválido (mas não é outro tipo de token) ou símbolo válido*/
 			/*CASO 1 - ele não existe ou ele existe e não é externo*/
 			if (i<0 || (i>=0 && ts[i].externo != 1)) { /*Preciso incluir na tabela de definições*/
-				td = incluiTabelaDefinicao(td,cont,token);
+				def = incluiTabelaDefinicao(td,cont,token);
+				td = def;
 				(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
 			}		
 			/*CASO 2 - ele existe mas é externo*/
@@ -721,7 +732,7 @@ tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, f
 //		free(token1);
 	}
 
-	return td; /*retornamos a tabela de definições possivelmente atualizada*/
+	return def; /*retornamos a tabela de definições possivelmente atualizada*/
 
 }
 
@@ -739,8 +750,9 @@ int procuraSomaVetor(char* fonte, contadores* cont, flags* flg, int copy) {
 		token = pegaToken(fonte, cont);
 			if(copy) {
 				if(token[strlen(token)-1] == ',') {
-					token1 = (char*) malloc ((strlen(token))*sizeof(char));					
+					token1 = (char*) calloc ((strlen(token)+1),sizeof(char));					
 					memmove(token1, token, strlen(token)-1);
+					token1[strlen(token)] = '\0';
 					i = atoi(token1); 
 				}
 				else {
@@ -784,14 +796,19 @@ void trataCOPY(char* fonte, objeto* obj, contadores* cont, panalise* retorno, fl
 	token = pegaToken(fonte, cont); /*ou que a soma foi inserida sem espaço (token errado)*/
 	transformaMaiusculo(token, strlen(token));
 		if(token[(strlen(token)-1)] == ',') { /*Se o último elemento do token é uma vírgula*/
-			token1 = (char*) malloc ((strlen(token))*sizeof(char));					
-			memmove(token1, token, strlen(token)-1); /*Vemos o que é o token*/		
+			token1 = (char*) calloc ((strlen(token)+1), sizeof(char));					
+			memmove(token1, token, strlen(token)-1); /*Vemos o que é o token*/
+			token1[strlen(token)] = '\0';
 			k = procuraDiretiva(token1, dir);
 			l = procuraInstrucao(token1,instr);	   	
 			s = verificaRotulo(strcat(token1, ":"),cont);
 			if(k<0 && l<0) { /*Se ele não é uma palavra reservada*/
 				if(s>=0) {	/*e é um símbolo*/
 					(*flg).erro = (*flg).erro + s;
+					free(token1);
+					token1 = (char*) calloc ((strlen(token)+1), sizeof(char));					
+					memmove(token1, token, strlen(token)-1);
+					token1[strlen(token)] = '\0';
 					h=procuraTabelaSimbolos (ts, cont, token1);
 					if (h>=0) {	/*Se o símbolo já existe, existem 2 possibilidades*/
 						if(!ts[h].definido) { /*Se o símbolo não é definido, precisamos atualizar a lista*/
@@ -807,10 +824,7 @@ void trataCOPY(char* fonte, objeto* obj, contadores* cont, panalise* retorno, fl
 							tu = (*retorno).tu;
 						}
 					}
-					else {  /*Se não está na tabela, precisamos incluir como não definido*/
-//						free(token1);
-						token1 = (char*) malloc ((strlen(token))*sizeof(char));					
-						memmove(token1, token, strlen(token)-1);						
+					else {  /*Se não está na tabela, precisamos incluir como não definido*/				
 						(*retorno).ts = incluiTabelaSimbolos(ts,cont,token1,0,(*cont).contadorinstr);
 						ts = (*retorno).ts;
 						obj[(*cont).contadorinstr].codigo = (-1);
@@ -832,7 +846,7 @@ void trataCOPY(char* fonte, objeto* obj, contadores* cont, panalise* retorno, fl
 			k = procuraDiretiva(token, dir); /*Vemos o que é o token*/
 			l = procuraInstrucao(token,instr);	   	
 			j = verificaRotulo(token, cont);
-			token1 = (char*) malloc ((strlen(token))*sizeof(char));
+			token1 = (char*) calloc ((strlen(token)), sizeof(char));
 			strcpy(token1, token);			
 			s = verificaRotulo(strcat(token1, ":"), cont);
 				if(k>=0 || l>=0 || j>=0) {
@@ -884,7 +898,7 @@ void trataCOPY(char* fonte, objeto* obj, contadores* cont, panalise* retorno, fl
 	k = procuraDiretiva(token, dir);	   	/*vemos se é uma diretiva*/
 	l = procuraInstrucao(token,instr);	   	/*vemos se é uma instrução*/
 	j = verificaRotulo(token, cont);	   	/*vemos se é um rótulo*/
-	token1 = (char*) malloc ((strlen(token) + 1)*sizeof(char));					
+	token1 = (char*) calloc ((strlen(token) + 1), sizeof(char));					
 	strcpy(token1, token);			
 	s = verificaRotulo(strcat(token1, ":"), cont); 	/*vemos se é um símbolo válido*/
 		if(k>=0 || l>=0 || j>=0) {			/*Se é uma palavra reservada...*/
@@ -949,9 +963,10 @@ void trataInstrucaoText(char* fonte, objeto* obj, contadores* cont, panalise* re
 			k = procuraDiretiva(token, dir);	   	/*vemos se é uma diretiva*/
 			l = procuraInstrucao(token,instr);	   	/*vemos se é uma instrução*/
 			j = verificaRotulo(token, cont);	   	/*vemos se é um rótulo*/
-			token1 = (char*) malloc ((strlen(token) + 1)*sizeof(char));					
+			token1 = (char*) calloc ((strlen(token) + 2), sizeof(char));					
 			strcpy(token1, token);			
 			s = verificaRotulo(strcat(token1, ":"), cont); 	/*vemos se é um símbolo válido*/
+			token1[strlen(token1)] = '\0';
 			if(k>=0 || l>=0 || j>=0) {			/*Se é uma palavra reservada...*/
 				printf("Erro sintático, linha %d: faltam operandos para a instrução %s\n", (*cont).contadorlinha,      						instr[posinstrtab].instrucao);
 			}
@@ -975,6 +990,7 @@ void trataInstrucaoText(char* fonte, objeto* obj, contadores* cont, panalise* re
 				}
 				else {  /*Se não está na tabela, precisamos incluir como não definido*/
 					(*retorno).ts = incluiTabelaSimbolos(ts,cont,token,0,(*cont).contadorinstr);
+					ts = (*retorno).ts;
 					obj[(*cont).contadorinstr].codigo = (-1);
 				}
 				obj[(*cont).contadorinstr].relativo = 1; /*indicamos que o símbolo é um endereço relativo*/
@@ -1014,8 +1030,9 @@ panalise analisaLinhaText(char* fonte, contadores* cont, flags* flg, tabsimb* ts
 	r=verificaRotulo(token,cont);
 		if(r>=0) {		      		/*O primeiro elemento da linha é um rótulo*/
 			((*flg).erro) = (*flg).erro + r;/*Caso o rótulo esteja errado, precisamos comunicar o FLAG de erro*/
-			token1 = (char*) malloc ((strlen(token))*sizeof(char));					
-			memmove(token1, token, strlen(token)-1); /*Eliminando os ':' do rótulo*/			
+			token1 = (char*) calloc ((strlen(token)+1), sizeof(char));					
+			memmove(token1, token, strlen(token)-1); /*Eliminando os ':' do rótulo*/
+			token1[strlen(token)] = '\0';			
 			retorno.ts = incluiTabelaSimbolos(ts, cont, token1, 1, -1); /*O 1 indica que o símbolo entra já definido*/
 			ts = retorno.ts;		/*Vai ser necessário atualizar o endereço que a tabela de símbolos aponta!!!*/
 			(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token); 
@@ -1039,12 +1056,11 @@ panalise analisaLinhaText(char* fonte, contadores* cont, flags* flg, tabsimb* ts
 				tu = retorno.tu;
 			}
 			else {	/*Caso depois de um rótulo(existente ou não) não tenhamos uma instrução ou uma diretiva*/
-				printf("Erro sintático, linha %d: linha não possui estrutura <rótulo><instrução>|<diretiva><operandos>\n", 						(*cont).contadorlinha);
+				printf("Erro sintático, linha %d: linha não possui estrutura <rótulo>(<instrução>|<diretiva>)<operandos>\n", 						(*cont).contadorlinha);
 				(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token); /*Esse símbolo é algo inválido*/
 			}							/*Ignoramos ele e seguimos em frente com a tradução*/
 		}
 	//free(token);	
-	(*flg).fimtext = (*cont).contadorinstr;
 	return retorno;
 }
 
@@ -1082,11 +1098,20 @@ void trataDiretivaData(char* fonte, objeto* obj, contadores* cont, flags* flg, t
 		}
 		else { /*Se for SPACE*/
 			if(n<=0) { /*Se o valor for negativo, uma string ou o próprio zero, não vale*/
-				printf("Erro sintático, linha %d: argumento inválido para a diretiva\n", (*cont).contadorlinha);
-				((*flg).erro)++;
-					if(n<0 || !strcmp(token,"0")) { /*Se o argumento for um NÚMERO inválido, ignoramos ele*/
-						(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
-					}
+				if(n<0 || !strcmp(token,"0")) { /*Se o argumento for um NÚMERO inválido, ignoramos ele*/
+					printf("Erro sintático, linha %d: argumento inválido para a diretiva\n", (*cont).contadorlinha);
+					((*flg).erro)++;					
+					(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
+				}
+				else {
+					if(n==0 && strcmp(token,"0")) { /*Se é um símbolo qualquer, assumimos SPACE 1*/
+						obj[(*cont).contadorinstr].codigo = 0; 
+						obj[(*cont).contadorinstr].somar = 0;
+						obj[(*cont).contadorinstr].relativo = 1; 
+						obj[(*cont).contadorinstr].linha = (*cont).contadorlinha;
+						((*cont).contadorinstr)++;
+					}	/*Ponto de leitura não incrementado pois assume-se que esse símbolo é da prox. linha*/
+				}
 			} /*Caso contrário, ele pode ser o elemento de uma próxima linha*/
 			else {  /*Se o valor for positivo*/
 				for(;n>0;n--) { /*Separamos o espaço*/
@@ -1150,7 +1175,7 @@ tabsimb* analisaLinhaData(char* fonte, contadores* cont, objeto* obj, flags* flg
 			s = procuraTabelaSimbolos(ts,cont,token);
 			if (s>=0) { /*Se ele existe*/
 				if(ts[s].definido) { /*Se ele já está definido, temos um erro*/
-					printf("Erro semântico, linha %d: símbolo já definido", (*cont).contadorlinha);
+					printf("Erro semântico, linha %d: símbolo %s já definido\n", (*cont).contadorlinha, token);
 					((*flg).erro)++;	
 				}
 				else { /*Se ele ainda não foi definido*/
@@ -1254,7 +1279,7 @@ void arrumaObjeto(objeto* obj, tabsimb* ts, contadores* cont, flags* flg) {
 						((*flg).erro)++;
 					}
 					/*Símbolo constante, 2 endereços prévios é COPY (opcode = 10 e não é relativo)*/
-					if(obj[j-2].codigo == 10 && !obj[j-2].relativo) { /*COPY*/
+					if(obj[j-2].codigo == 9 && !obj[j-2].relativo) { /*COPY*/
 						printf("Erro semântico, linha %d: valor da constante %s sendo alterado\n",obj[j].linha, ts[i].simbolo);
 						((*flg).erro)++;
 					}
@@ -1264,7 +1289,7 @@ void arrumaObjeto(objeto* obj, tabsimb* ts, contadores* cont, flags* flg) {
 						((*flg).erro)++;
 					} 
 				}
-				if((obj[j-1].codigo>4 && obj[j-1].codigo<9) && obj[j].codigo>=(*flg).fimtext) {
+				if((obj[j-1].codigo>4 && obj[j-1].codigo<9 && !obj[j-1].relativo) && obj[j].codigo>=(*flg).fimtext) {
 					printf("Erro semântico, linha %d: pulo para seção de dados\n", obj[j].linha);
 					((*flg).erro)++;
 				}
@@ -1286,7 +1311,7 @@ void arrumaTabDef(tabsimb* ts, tabdef* td, contadores* cont, flags* flg) { /*Col
 	char* simbolo;
 
 	for(i=0;i<(*cont).tamtd;i++) { /*Para todos os elementos na tabela de definições*/
-		simbolo = (char*) malloc (sizeof(char)*strlen(td[i].simbolo)); 
+		simbolo = (char*) calloc (strlen(td[i].simbolo) + 1, sizeof(char)); 
 		strcpy(simbolo, td[i].simbolo);
 		j = procuraTabelaSimbolos(ts,cont,simbolo); /*Procuramos o símbolo em TD na TS*/
 		if(j>=0) {  /*Se ele existe*/
@@ -1309,7 +1334,7 @@ void printObjeto(objeto* obj, tabdef* td, tabuso* tu, char* arquivo, contadores*
 	
 	FILE* fp;
 	int i;
-	char* narq = (char*) malloc (sizeof(char)*(4+strlen(arquivo)));
+	char* narq = (char*) calloc (sizeof(char), (4+strlen(arquivo)));
 
 	strcpy(narq, arquivo);
 	strcat(narq, ".txt");	
@@ -1332,16 +1357,16 @@ void printObjeto(objeto* obj, tabdef* td, tabuso* tu, char* arquivo, contadores*
 			}
 			fprintf(fp,"\n");
 			fprintf(fp, "RELATIVES\n");
-			for(i=0;i<(*cont).contadorinstr;i++) {
-				if(obj[i].relativo>0) {			
-					fprintf(fp, "%d ", i);
-				}
-			}
+			for(i=0;i<(*flg).fimtext;i++) {
+				if(obj[i].relativo>0) { /*O endereço do símbolo é relativo na seção DATA*/			
+					fprintf(fp, "%d ", i); /*Mas o que tem lá dentro não é!*/
+				}	/*Por isso, se é relativo, mas está fora da seção de texto, não interessa*/			
+			}		/*O relativo pode ser > 0 fora da seção de texto pq eu uso ele pra marcar a qtd de SPACE*/
 			fprintf(fp,"\n\n");
 			fprintf(fp, "CODE\n");
 		}
 		for(i=0;i<(*cont).contadorinstr;i++) {	
-			if(obj[i].codigo < 10) {
+			if(abs(obj[i].codigo) < 10) {
 				fprintf(fp, "0");
 			}	
 			fprintf(fp, "%d ", obj[i].codigo);
@@ -1357,9 +1382,12 @@ void monta(char* fonte, char* arquivo) {
 	
 	tabinstr* instr;
 	tabdir* dir;
-	tabsimb* ts = (tabsimb*) malloc (sizeof(tabsimb));
-	tabdef* td = (tabdef*) malloc (sizeof(tabdef));
-	tabuso* tu = (tabuso*) malloc (sizeof(tabuso));
+	tabsimb* ts = (tabsimb*) calloc (1,sizeof(tabsimb));
+	ts[0].simbolo[0] = '\0';
+	tabdef* td = (tabdef*) calloc (1,sizeof(tabdef));
+	td[0].simbolo[0] = '\0';
+	tabuso* tu = (tabuso*) calloc (1,sizeof(tabuso));
+	tu[0].simbolo[0] = '\0';
 	contadores cont;
 	flags flg;
 	objeto* obj = (objeto*) calloc (216,sizeof(obj));
@@ -1369,6 +1397,9 @@ void monta(char* fonte, char* arquivo) {
 	inicializaContadores(&cont);
 	inicializaFlags(&flg);
 //	inicializaObjeto(obj);
+	retorno.ts = NULL;
+	retorno.td = NULL;
+	retorno.tu = NULL;
 	retorno.sectionend = 0;
 	flg.erro = flg.erro + encontraSectionText(fonte, &cont);
 		while(!retorno.sectionend && fonte[cont.pontodeleitura] != '\0') { 
@@ -1376,6 +1407,7 @@ void monta(char* fonte, char* arquivo) {
 			ts = retorno.ts;
 			td = retorno.td;
 		}
+		flg.fimtext = cont.contadorinstr;
 		if(!retorno.sectionend && fonte[cont.pontodeleitura] == '\0') {
 			printf("Erro sintático, linha %d: não há seção de dados\n", cont.contadorlinha);
 		}
@@ -1393,7 +1425,8 @@ void monta(char* fonte, char* arquivo) {
 			printf("\nImpossível montar arquivo objeto. Por favor, corrija os erros e tente novamente\n");
 		}
 
-//	free(ts);
+	free(instr);
+	free(dir);
 //	free(td);
 //	free(tu);
 //	free(obj);
@@ -1407,11 +1440,11 @@ int main() {
 //	char* fonte;
 //	char* arquivo;
 //
-//	fonte = (char*) malloc(sizeof(char)*200);
-//	arquivo = (char*) malloc (sizeof(char)*6);
+//	fonte = (char*) calloc(200, sizeof(char));
+//	arquivo = (char*) calloc (6, sizeof(char));
 //
 //	strcpy(arquivo,"teste");
-//	strcpy(fonte,"SECTION TEXT\n M: BEGIN\n\nPUBLIC N\nPUBLIC J\n INPUT N\nJMP M\n STOP\nEND\nSection Data\nN: space 1\nJ: CONST 0\0");
+//	strcpy(fonte,"SECTION TEXT\nLOAD J\nM:\n\n INPUT N\nCOPY N, K\nADD K + 2\nJMPZ M\n\nSTOP\nSection Data\nN: space \nK: space 3 \nJ: CONST 0\0");
 
 //	monta(fonte, arquivo);
 	return 0;
