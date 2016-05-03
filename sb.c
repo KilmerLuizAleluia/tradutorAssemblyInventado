@@ -28,33 +28,43 @@
 #define INPUT	112
 #define OUTPUT	113
 #define STOP	114
-/*Protótipos******************************************************************************************************************************/
-typedef struct contadores contadores; /*K*/
-typedef struct objeto objeto;
-typedef struct flags flags;	      /*K*/
-typedef struct tabdef tabdef;
+/*Protótipos*****************************************************************************************************************************/
+typedef struct tabinstr tabinstr;
+typedef struct tabdir tabdir;
 typedef struct tabsimb tabsimb;
+typedef struct tabdef tabdef;
 typedef struct tabuso tabuso; 
-typedef struct tabdir tabdir;	      /*K*/
-typedef struct tabinstr tabinstr;     /*K*/
+typedef struct contadores contadores;
+typedef struct objeto objeto;
+typedef struct flags flags;
 typedef struct panalise panalise;
-tabinstr* montaTabelaInstrucoes();    /*K*/
-tabdir* montaTabelaDiretivas();       /*K*/
-void pulaEspacos(char* fonte, contadores* cont);  /*K*/
-void transformaMaiusculo (char* token, int comprimento); /*K*/
-void inicializaContadores (contadores* cont); /*K*/
-void inicializaFlags (flags* flg);  /*K*/
-char* pegaToken(char* fonte, contadores* cont); /*K*/
-int encontraSectionText(char* fonte, contadores* cont); 
+void pulaEspacos(char* fonte, contadores* cont);
+void transformaMaiusculo (char* token, int comprimento);
+void inicializaContadores (contadores* cont);
+void inicializaFlags (flags* flg);
+void inicializaObjeto(objeto* obj);
+char* pegaToken(char* fonte, contadores* cont);
+int primeirosPassos(char* fonte, contadores* cont, tabsimb* ts, panalise* retorno, flags* flg);
 int verificaRotulo(char* token, contadores* cont);
 tabsimb* incluiTabelaSimbolos (tabsimb* ts, contadores* cont, char* token, int d, int a);
-int procuraDiretiva(char* token, tabdir* dir); /*K*/
-int procuraInstrucao(char* token, tabinstr* instr); /*K*/
+tabdef* incluiTabelaDefinicao (tabdef* td, contadores* cont, char* token);
+tabuso* incluiTabelaUso (tabuso* tu, contadores* cont, char* token);
+int procuraDiretiva(char* token, tabdir* dir);
+int procuraInstrucao(char* token, tabinstr* instr);
 int procuraTabelaSimbolos (tabsimb* ts, contadores* cont, char* token);
 tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, flags* flg, tabdef* td, int auxs, contadores* cont, tabdir* dir, tabinstr* instr, int* sectionend);
-tabdef* incluiTabelaDefinicao (tabdef* td, contadores* cont, char* token); 
-int procuraSomaVetor(char* fonte, contadores* cont, flags* flg, int copy); 
-panalise analisaLinhaText(char* fonte, contadores* cont, flags* flg, tabsimb* ts, tabdir* dir, tabdef* td, tabinstr* instr, objeto* obj, tabuso* tu); 
+int procuraSomaVetor(char* fonte, contadores* cont, flags* flg, int copy);
+void trataCOPY(char* fonte, objeto* obj, contadores* cont, panalise* retorno, flags* flg, tabsimb* ts, tabuso* tu, tabinstr* instr, tabdir* dir, int posinstrtab);
+void trataInstrucaoText(char* fonte, objeto* obj, contadores* cont, panalise* retorno, flags* flg, tabsimb* ts, tabuso* tu, tabinstr* instr, tabdir* dir, int posinstrtab);
+panalise analisaLinhaText(char* fonte, contadores* cont, flags* flg, tabsimb* ts, tabdir* dir, tabdef* td, tabinstr* instr, objeto* obj, tabuso* tu);
+void trataDiretivaData(char* fonte, objeto* obj, contadores* cont, flags* flg, tabdir* dir, tabinstr* instr, int posdirtab, int* end);
+tabsimb* analisaLinhaData(char* fonte, contadores* cont, objeto* obj, flags* flg, tabdir* dir, tabinstr* instr, tabsimb* ts, int* end);
+void arrumaObjeto(objeto* obj, tabsimb* ts, contadores* cont, flags* flg);
+void arrumaTabDef(tabsimb* ts, tabdef* td, contadores* cont, flags* flg);
+void printObjeto(objeto* obj, tabdef* td, tabuso* tu, char* arquivo, contadores* cont, flags* flg);
+void monta(char* fonte, char* arquivo);
+tabinstr* montaTabelaInstrucoes();
+tabdir* montaTabelaDiretivas(); 
 /****************************************************************************************************************************************/
 
 
@@ -75,7 +85,7 @@ tabinstr* montaTabelaInstrucoes() {
 	int i; /*variável auxiliar de loop*/
 	tabinstr* ti;
 
-	ti = (tabinstr*) malloc(14*(sizeof(tabinstr))); /*Alocando os 14 espaços da tabela, já que temos 14 instruções*/
+	ti = (tabinstr*) calloc(14,(sizeof(tabinstr))); /*Alocando os 14 espaços da tabela, já que temos 14 instruções*/
 
 	for(i=0;i<14;i++) {		/*montaTabelaInstrucoes - LOOP 1*/
 		ti[i].operandos = 1;	/*Não vale para COPY e STOP mas vale para todas as outras instruções. Arruma-se depois!*/
@@ -175,8 +185,8 @@ tabinstr* montaTabelaInstrucoes() {
 	return ti;
 }
 
-/*Tabela de Diretivas-TESTADO(1)**********************************************************************************************************/
-/*****************************************************************************************************************************************/
+/*Tabela de Diretivas-TESTADO(1)*********************************************************************************************************/
+/****************************************************************************************************************************************/
 
 struct tabdir {		  /*Armazena as diretivas para referências futuras na hora de traduzir*/
 	char diretiva[8]; /*A maior referência é SECTION que tem 7 letras. O oitavo espaço no vetor existe para armazenar o '\0'*/
@@ -190,7 +200,7 @@ tabdir* montaTabelaDiretivas() {
 
 	tabdir* td;
 
-	td = (tabdir*) malloc(9*(sizeof(tabdir)));
+	td = (tabdir*) calloc(9,(sizeof(tabdir)));
 
 	/*Incluindo os dados da diretiva SECTION*/
 	td[0].diretiva[0]='S';
@@ -337,7 +347,8 @@ struct panalise {			/*Struct para lidar com retornos de novos ponteiros caso eu 
 	tabsimb* ts;			/*de uma tabela em analisaLinhaText*/
 	tabdef* td;
 	tabuso* tu;
-	int sectionend;			/*indicador de quando precisamos parar de ler linhas de TEXT (p/ o LOOP de chamada)*/
+	int sectionendT;		/*indicador de quando precisamos parar de ler linhas de TEXT (p/ o LOOP de chamada)*/
+	int sectionendD;		
 };					/*de analisaLinhaText*/
 
 typedef struct panalise panalise;
@@ -346,7 +357,6 @@ typedef struct panalise panalise;
 
 /*Funções Auxiliares*********************************************************************************************************************/
 /****************************************************************************************************************************************/
-
 
 void pulaEspacos(char* fonte, contadores* cont) {	/*Função criada para ignorar espaços*/
 
@@ -415,6 +425,12 @@ void inicializaObjeto(objeto* obj) {
 /*Funções Montador (1a (e única) passagem))**********************************************************************************************/
 /****************************************************************************************************************************************/
 
+
+/*****************************************************************************************************************************************
+Essa função é uma função que pega o próximo token do arquivo fonte, considerando-se que tokens são separados entre si por caracteres de espaçamento. A função então percorre o fonte e coleta os caracteres até que haja um espaço ou uma indicação do final do vetor fonte (para não extrapolar o limite do vetor. Afinal, depois do final do fonte não há mais o que ser lido).
+Argumentos: fonte (é no fonte que temos o token), cont (a partir do ponto de leitura é que devemos começar a obtenção do token)
+Retorno: uma string contendo o token obtido  
+*****************************************************************************************************************************************/
 char* pegaToken(char* fonte, contadores* cont) {
 
 	int i = (*cont).pontodeleitura, j=(*cont).pontodeleitura;
@@ -432,45 +448,84 @@ char* pegaToken(char* fonte, contadores* cont) {
 	return token;
 }
 
-
-int encontraSectionText(char* fonte, contadores* cont) { /*A primeira coisa que precisamos fazer é encontrar a seção SECTION TEXT*/
+/*****************************************************************************************************************************************
+Essa função analisa a possibilidade de termos uma definição de módulo antes da seção de texto e ela também encontra SECTION TEXT. Então começamos pegando o primeiro token e vendo, primeiramente, se ele é um rótulo. Se ele for um rótulo ele é incluído na tabela de símbolos, e automaticamente sabemos que devemos procurar BEGIN. Se seguido desse rótulo não temos BEGIN, temos um rótulo fora da seção de textos ou de dados, o que está errado. Se o que segue esse rótulo é BEGIN, podemos indicar que temos um módulo, podemos indicar  isso para as flags. Independente de termos um módulo ou não, o próximo passo é procurar SECTION TEXT. Por isso pegamos o token e comparamos. Se não for SECTION, a diretiva está faltando e temos um erro. Não avançamos o ponto de leitura pois iremos continuar avaliando o código independente dos erros. Verificamos então o que segue SECTION. Se não for TEXT então, novamente temos um erro e o símbolo é ignorado para ser analisado em outro momento.
+Chamada por: monta
+Chama: pegaToken, pulaEspacos, transformaMaiusculo (para analisar tokens), incluiTabelaSimbolos (para o caso de haver a definição de um módulo)
+Argumentos: fonte (o objeto de análise é o arquivo fonte), cont (os contadores são usado como auxílio), flg (para atualizar no caso de ser um módulo), ts (caso seja necessária a inclusão), retorno (caso a tabela de símbolos seja atualizada, precisamos atualizar o seu ponteiro pois haverá a realocação)
+Retorno: retorna 1 se SECTION foi encontrada e 0 se não foi ou se foi encontrada com erro
+*****************************************************************************************************************************************/
+int primeirosPassos(char* fonte, contadores* cont, tabsimb* ts, panalise* retorno, flags* flg) { /*A primeira coisa que precisamos fazer é encontrar a seção SECTION TEXT*/
 
 	char* token;
+	int r;
 
 	pulaEspacos(fonte,cont); /*Pulamos os espaços iniciais no texto*/
 	token = pegaToken (fonte,cont); /*Pegamos o token que aparece depois desse primeiro espaço*/
 	transformaMaiusculo(token,strlen(token));
-		if (strcmp(token,"SECTION") != 0) {
-			printf("Erro sintático, linha %d: seção SECTION TEXT ausente ou com erro.\n", (*cont).contadorlinha);
-			//(*cont).pontodeleitura = (*cont).pontodeleitura - strlen(token);
-			return 1;
-		}
-		else {
-			(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
-//			free(token);
-			pulaEspacos(fonte,cont);
-			token = pegaToken(fonte,cont);
-			transformaMaiusculo(token,strlen(token));
-				if(strcmp(token,"TEXT") != 0) {
-					printf("Erro sintático, linha %d: seção SECTION %s inválida.\n", (*cont).contadorlinha, token);
-					//(*cont).pontodeleitura = (*cont).pontodeleitura - strlen(token);
-					return 1;
-				}
-				else {
-					(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
-//					free(token);
-					return 0;
-				}
-		}
+	r = verificaRotulo(token, cont);
+	if(r>=0) { /*caso Módulo*/
+		(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);		
+		token[strlen(token)-1] = '\0';
+		(*retorno).ts = incluiTabelaSimbolos(ts, cont, token, 1, (-1)); 
+		ts = (*retorno).ts;
+		pulaEspacos(fonte,cont); /*Pulamos os espaços iniciais no texto*/
+		token = pegaToken (fonte,cont); /*Pegamos o token que aparece depois desse primeiro espaço*/
+		transformaMaiusculo(token,strlen(token));
+			if(strcmp(token, "BEGIN")) { /*Se o que segue o rótulo não é BEGIN*/
+				printf("Erro sintático, linha %d: rótulo fora da seção de texto não indica início de módulo\n", (*cont).contadorlinha);
+				((*flg).erro)++;
+					if(strcmp(token, "SECTION")) {
+						(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
+					}
+			}
+			else {
+				(*flg).modulo = 1;
+				(*flg).begin = 1;
+				(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
+			}
+	}
+	
+	pulaEspacos(fonte,cont); /*Visto que é módulo temos que encontrar SECTION TEXT*/
+	token = pegaToken (fonte,cont);
+	transformaMaiusculo(token,strlen(token));
+
+	if (strcmp(token,"SECTION") != 0) {
+		printf("Erro sintático, linha %d: seção SECTION TEXT ausente ou com erro.\n", (*cont).contadorlinha);
+		return 1;
+	}
+	else {
+		(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
+//		free(token);
+		pulaEspacos(fonte,cont);
+		token = pegaToken(fonte,cont);
+		transformaMaiusculo(token,strlen(token));
+			if(strcmp(token,"TEXT") != 0) {
+				printf("Erro sintático, linha %d: seção SECTION %s inválida.\n", (*cont).contadorlinha, token);
+				//(*cont).pontodeleitura = (*cont).pontodeleitura - strlen(token);
+				return 1;
+			}
+			else {
+				(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
+//				free(token);
+				return 0;
+			}
+	}
+
 
 }
 
+/*****************************************************************************************************************************************
+Essa função verifica se um token é um símbolo válido. Primeiro verifica-se se o último símbolo é ':' pois rótulos se encerram com esse símbolo (para o caso de símbolos que não são rótulos, apenas enviamos uma concatenação do símbolo com ':' e avaliação será a mesma). Verificamos então se a string tem o tamanho permitido (não sendo maior do que 100). Se ela não tiver o tamanho permitido, indicamos um erro. Verificamos também se o token começa com caracteres válidos e se ele não apresenta caracteres inválidos para as outras posições.
+Argumentos: token (o símbolo que será avaliado), cont (para indicar a linha do erro)
+Retorno: retorna 1 se é um rótulo (ou símbolo) mas ele é inválido, retorna 0 se é um rótulo (ou símbolo que não apresenta erros), retorna um valor negativo se não é um rótulo (ou símbolo) 
+*****************************************************************************************************************************************/
 int verificaRotulo(char* token, contadores* cont) { /*Retorna -1 se não é rótulo, retorna 0 se é, retorna 1 se é e existe algum erro*/
 
 	int i = strlen(token) - 1, j=0;
 	
 	if (token[i]==':') {
-		if (strlen(token)>101) {
+		if (strlen(token)>100) {
 			printf("Erro léxico, linha %d, rótulo %s excede o número máximo de caracteres.\n",(*cont).contadorlinha, token);
 			j=1;
 		}
@@ -493,7 +548,9 @@ int verificaRotulo(char* token, contadores* cont) { /*Retorna -1 se não é rót
 
 }
 
-
+/*****************************************************************************************************************************************
+As funções abaixo são funções auxiliares que realizam a inclusão de um símbolo na tabela em questão. Para incluiTabelaSimbolos, além da tabela, do contador e do token com o símbolo a ser incluído, enviamos como argumento dois inteiros d e a. 'd' indica se o símbolo é definido ou não é 'a' indica o último endereço que esse símbolo foi visto (montador de uma passagem). Note que, mesmo se um símbolo não é definido o endereço é atualizado como o ponto do programa. Isso não faz muito diferença pois todos os símbolos tem seus endereços atualizados quando eles se tornam definidos. No caso de incluiTabelaSimbolo e incluiTabelaDefinicao, além da inclusão temos uma procura pela tabela, pois símbolos já definidos não podem ser incluídos, e, portanto, este erro deve ser tratados. Cada uma dessas funções retorna um ponteiro da sua respectiva estrutura já que a realocação atualizou isso. 
+*****************************************************************************************************************************************/
 tabsimb* incluiTabelaSimbolos (tabsimb* ts, contadores* cont, char* token, int d, int a) {
 	
 	int i, auxs;
@@ -560,6 +617,9 @@ tabuso* incluiTabelaUso (tabuso* tu, contadores* cont, char* token) {
 	return uso;
 }
 
+/*****************************************************************************************************************************************
+As funções abaixo são funções auxiliares que realizam a procura sequencial pelas tabelas enviadas como argumento. Elas retornam -1 se o símbolo não foi encontrado e retornam um valor >= 0 se o símbolo foi encontrado, o próprio retorno sendo a posição na tabela em que o símbolo está. Elas recebem como argumento as estruturas de suas respectivas tabelas e o token na qual queremos realizar a comparação. Para o caso de procuraTabelaSimbolos também enviamos como argumento a variável cont pois ela armazena o tamanho da tabela de símbolos que não é fixo durante o programa.  
+*****************************************************************************************************************************************/
 int procuraDiretiva(char* token, tabdir* dir) { /*Função para verificar se a diretiva em questão (se o token é alguma diretiva)*/
 
 	int i,j=(-1);
@@ -585,7 +645,6 @@ int procuraInstrucao(char* token, tabinstr* instr) { /*Vê se o token é uma ins
 }
 
 
-
 int procuraTabelaSimbolos (tabsimb* ts, contadores* cont, char* token) {
 	
 	int i;
@@ -598,11 +657,17 @@ int procuraTabelaSimbolos (tabsimb* ts, contadores* cont, char* token) {
 
 	return (-1);
 }
-
+/*****************************************************************************************************************************************
+Função que analisa as situação de uma diretiva encontrada na seção de texto. De acordo com posdirtab temos a diretiva procurada. Se a diretiva é EXTERN, precisamos de um rótulo associado. Se não existe esse rótulo temos um erro. Se temos o rótulo, atualizamos o ponto na tabela de símbolos onde está esse rótulo, falando que o símbolo é externo. Se não é módulo não podemos ter essa diretiva, erro. Para BEGIN, temos um erro automático se a diretiva é encontrada: BEGIN deve ser definido antes da seção de texto. Indicamos o erro. Se já temos BEGIN ou se já temos END, indicamos o erro. Se não tem um rótulo, não temos como associar um nome ao módulo. Se temos BEGIN, informamos que é um módulo. Se a diretiva é END, também já temos um erro, dado que a diretiva END só deve aparecer no final da seção de dados. Se temos a diretiva SECTION, ela deve ser seguida por DATA. Se for, indicamos que a seção de texto acabou e indicamos a instrução em que isso acontece. Se não for DATA, temos uma seção inválida. Se o símbolo que segue não é uma palavra reservada ele é ignorado. Se a diretiva é CONST ou SPACE temos um erro, pois elas só devem ser incluídas na seção da dados. Os argumentos dessas diretivas são procurados e ignorados. Finalmente, se a diretiva for PUBLIC, pegamos o elemento que segue e vemos se ele é um símbolo e não uma diretiva, uma instrução ou um rótulo.Se é uma palavra reservada, PUBLIC está sem argumentos. Se não é uma palavra reservada e é um símbolo não externo, há a inclusão desse símbolo na tabela de definição. Se o símbolo encontrado é externo ele não pode ser público. Temos um erro. As outras diretivas (EQU e IF) não são tratadas aqui pois elas nem deveriam existir nessa parte da montagem.
+Chamada por: analisaLinhaText
+Chama: pulaEspacos, pegaToken, transformaMaiusculo (para pegar e arrumar tokens), procuraDiretiva, procuraInstrucao, verificaRotulo (para ter certeza que um símbolo é um símbolo válido), incluiTabelaDefinicao (para incluir símbolos públicos)
+Argumentos: fonte (para pegar argumentos), temrot (para o caso de EXTERN e BEGIN que precisam ser precedidos por rótulo), posdirtab (posição da diretiva na tabela (pra identificar a diretiva)), ts (para a procura na tabela de símbolos no caso de verificação de símbolos externos já definidos), flg (para indicar erros, verificar se é módulo, se tem begin ou end, etc), td (abela de definições, é possível realizar inclusões nessa função), auxs (ponto da inclusão do último rótulo da tabela de símbolos, para se, caso seja EXTERN, possamos atualizar o ponto correto), cont (auxiliar), dir, instr (para verificação), sectionend (para indicar que atingimos a seção de dados)
+Retorno: caso a tabela de definições seja realocada, retornamos o novo endereço.
+*****************************************************************************************************************************************/
 tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, flags* flg, tabdef* td, int auxs, contadores* cont, tabdir* dir, tabinstr* instr, int* sectionend) {
 
 	int i, j, k, l, s;
-	tabdef* def;
+	tabdef* def = td;
 	char* token;
 	char* token1;	
 	if(posdirtab==EXTERN) {	/*Posição da diretiva EXTERN na tabela*/
@@ -620,8 +685,10 @@ tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, f
 		(*cont).pontodeleitura = (*cont).pontodeleitura + strlen("EXTERN");
 	}
 	if(posdirtab==BEGIN) {
+		(*flg).erro++;
+		printf("Erro semântico, linha %d: BEGIN não pode ser definido dentro da seção de textos\n",(*cont).contadorlinha);
 		if ((*flg).begin || (*flg).end) {
-			printf("Erro sintático, linha %d: BEGIN ou END já definidos!\n",(*cont).contadorlinha);
+			printf("Erro semântico, linha %d: BEGIN ou END já definidos\n",(*cont).contadorlinha);
 			(*flg).erro++;
 		}
 		if(temrot < 0) { /*Se não tem rótulo na linha não temos como associar um nome ao módulo!!!!!*/
@@ -632,6 +699,8 @@ tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, f
 		(*cont).pontodeleitura = (*cont).pontodeleitura + strlen("BEGIN");
 	}
 	if(posdirtab==END) {
+		(*flg).erro++;
+		printf("Erro semântico, linha %d: fim do módulo definido na seção de textos\n",(*cont).contadorlinha);
 		if(!(*flg).begin) {
 			printf("Erro semântico, linha %d: END sem BEGIN\n",(*cont).contadorlinha);
 			(*flg).erro++;
@@ -651,9 +720,6 @@ tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, f
 		if(!((*flg).modulo) && !((*flg).temstop)) {
 			printf("Erro semântico, linha %d: SECTION inicializada mas não há STOP\n", (*cont).contadorlinha);
 		}
-		if((*flg).modulo && !((*flg).end)) {
-			printf("Erro semântico, linha %d: SECTION inicializada mas não há END\n", (*cont).contadorlinha);
-		}
 		(*cont).pontodeleitura = (*cont).pontodeleitura + strlen("SECTION");
 		pulaEspacos(fonte, cont);	/*verificação se o que segue SECTION é DATA (caso contrário está errado)*/
 		token = pegaToken(fonte, cont);
@@ -663,9 +729,6 @@ tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, f
 			*sectionend = (*sectionend) + 1;
 			if((*flg).modulo==0 && (*flg).temstop==0) {
 			    printf("Erro sintático, linha %d: o programa não é módulo e não tem instrução STOP\n", (*cont).contadorlinha);
-			}
-			if((*flg).modulo==1 && (*flg).end==0) {
-			    printf("Erro sintático, linha %d: o programa não tem diretiva END\n", (*cont).contadorlinha);
 			}
 			(*cont).pontodeleitura = (*cont).pontodeleitura + strlen("DATA");		
 		}
@@ -735,7 +798,15 @@ tabdef* trataDiretivaText(char* fonte, int temrot, int posdirtab, tabsimb* ts, f
 	return def; /*retornamos a tabela de definições possivelmente atualizada*/
 
 }
-
+/*****************************************************************************************************************************************
+Essa função tem como propósito encontrar tokens '+' e verificar se os argumentos que seguem são válidos para quando temos símbolos. Pegamos o primeito token que segue o símbolo e vemos se é um caractere de soma. Se não é, não há nada a se fazer, a função se encerra informando que não houve erros. Caso seja o caractere de soma, pegamos o próximo token, que precisa ser um número positivo. Caso essa função tenha sido chamada pela função trataCOPY (como o primeiro argumento de COPY), porém, temos que tratar esse segundo argumento de forma diferente, pois ele estará seguido de uma vírgula. Se tivermos essa situação, precisamos ignorar essa vírgula antes de fazer qualquer análise. Se essa função é chamada do copy e o último elemento não é uma vírgula, há um erro sintático, apesar de que o valor ainda será analisado. Se o elemento que segue o '+' é um número POSITIVO, retornamos esse valor para a função que chamou para que o atributo soma do objeto seja atualizado. Caso contrário, se ele é negativo, temos um erro. Se ele é igual à zero, ou o número é zero ou temos uma string. Se for zero, temos uma redundância. Se for uma string temos um erro. 
+Chamada por: analisaInstrucaoText, trataCOPY
+Chama: pegaToken, pulaEspacos (para pegar tokens)
+Argumentos: fonte (objeto da nossa análise), cont (para atualizarmos (linhas)), flg (atualizado em caso de erro), copy (para indicar se devemos esperar uma vírgula como último caractere do argumento da soma. Para o caso onde há mais de um operando))
+Retorno: 0 -> não somar nada, não houve erro significativo
+       > 0 -> o quanto deve-se somar
+       > 0 -> erro (provavelmente a soma não é seguida de um número e sim de uma string)
+*****************************************************************************************************************************************/
 int procuraSomaVetor(char* fonte, contadores* cont, flags* flg, int copy) {
 
 	int i;
@@ -774,7 +845,7 @@ int procuraSomaVetor(char* fonte, contadores* cont, flags* flg, int copy) {
 			return 0;
 		}
 		else {	/*Se é zero, ou o valor é zero, ou o token é uma string*/
-			printf("Erro sintático, linha %d: operador de soma sem operando\n", (*cont).contadorlinha);
+			printf("Erro sintático, linha %d: operador de soma sem operando ou com operando redundante\n", (*cont).contadorlinha);
 			((*flg).erro)++;	/*Apenas indicamos o erro e teremos que avaliar esse token novamente*/	
 		}
 //		free(token);
@@ -939,6 +1010,12 @@ void trataCOPY(char* fonte, objeto* obj, contadores* cont, panalise* retorno, fl
 //		//free(token1);
 }
 
+/*****************************************************************************************************************************************
+Essa função tem como propósito tratar as instruções que encontramos na seção de texto. Assim que chamamos a função já atualizamos o objeto incluindo nele o opcode da instrução encontrada. Instruções não são relativas. Então, a partir do número de operandos da instrução, definimos como iremos tratá-la. Para o caso de 2 operandos temos apenas o COPY. O COPY é tratado em outra função pois ele é muito grande. Para as instruções com um operando, procuramos o token que segue a instrução. Se esse token for uma palavra reservada ou um rótulo, quer dizer que a instrução está sem seus operandos (assumimos que a palavra reservada indica uma nova linha). Se o que segue a instrução é um símbolo (avaliada como um rótulo pois as regras são as mesmas. Incluímos no símbolo os : para que ele fique válido como rótulo), precisamos ver qual o seu estado: ele pode já ter sido incluído na tabela de símbolos ou não . Se ele foi incluído e ele está definido, apenas atualizamos o objeto com o endereço do símbolo. Se ele não está definido, atualizamos a lista de endereços em que o símbolo aparece (colocamos o endereço atual como o último endereço da lista e colocamos no objeto o último endereço visto que estava na tabela de símbolos). Se o símbolo é externo, precisamos atualizar a tabela de uso. Se o símbolo não está na tabela de símbolos, precisamos incluí-lo como não definido. A última possíbilidade para a instrução é ela não ter argumentos, ou seja, ser um STOP. Para esse caso não é necessário fazer nada, apenas atualizar a flag que indica que existe o STOP (usado em outras funções). Para o caso em que temos 1 operando, temos que antes de retornar, verifica-se se há uma operação de acesso à vetor seguindo o símbolo.
+Chamada por: analisaLinhaText
+Chama: pulaEspacos, pegaToken, TransformaMaiusculo (para tratar tokens), procuraDiretiva, procuraInstrucao, verificaRotulo (para verificar os casos em que não foi incluído um operando), procuraTabelaSimbolos, incluiTabelaSimbolos (para tratar o operando quando ele é um símbolo), procuraSomaVetor (para o caso de vetores)
+Argumentos: fonte (para poder recuperar os operandos), obj (o vetor objeto é atualizado com opcodes e endereços), cont (usado como referência e atualizado aqui), retorno (para retornar as realocações feitas na tabela de símbolos e na tabela de uso), flg (para indicar erros ou para indicar que o STOP foi encontrado), ts (usada para procura e para enviar para a função de inclusão), tu (usada para a inclusão de símbolos externos), instr, dir (usadas como referência na hora de procurar palavras reservadas), posinstrtab (define a posição da instrução na tabela de instruções (opcode-1))
+*****************************************************************************************************************************************/
 void trataInstrucaoText(char* fonte, objeto* obj, contadores* cont, panalise* retorno, flags* flg, tabsimb* ts, tabuso* tu, tabinstr* instr, tabdir* dir, int posinstrtab) {
 
 	int l,s,j,h, k=0;	
@@ -986,6 +1063,7 @@ void trataInstrucaoText(char* fonte, objeto* obj, contadores* cont, panalise* re
 					}
 					if(ts[h].externo) { /*Se o símbolo é externo, precisamos incluí-lo na tabela de usos*/
 						(*retorno).tu = incluiTabelaUso(tu, cont, token);
+						tu = (*retorno).tu;
 					}
 				}
 				else {  /*Se não está na tabela, precisamos incluir como não definido*/
@@ -1014,8 +1092,13 @@ void trataInstrucaoText(char* fonte, objeto* obj, contadores* cont, panalise* re
 
 
 
-
-
+/*****************************************************************************************************************************************
+Analisa a parte da seção de textos LINHA POR LINHA. Espera-se que cada linha na seção de textos tenha a estrutura <rótulo>:(<diretiva>|<instrução>)<operandos>. Pegamos então o primeiro token e vemos se é um rótulo. Se é um rótulo ele deve ser incluído na tabela de símbolos, pois, assume-se que é a sua primeira definição. Pegamos o próximo token. Procura-se uma diretiva ou uma instrução independente de existir um rótulo, já que ele não precisa estar presente em uma linha. Portanto, encontrando um rótulo ou não, procuramos por uma diretiva. Se fizermos a comparação com a tabela e encontrarmos uma diretiva válida, temos que tratar essa diretiva de acordo com essa seção. Se não encontramos uma diretiva, procuramos uma instrução. Se for uma instrução, tratamos essa instrução de acordo com a seção de texto. Caso não tenhamos nem uma instrução, nem uma diretiva, é um símbolo qualquer. Ele pode ser o início de uma nova linha (rótulo, diretiva ou instrução) ou ele pode ser um símbolo sem significado. No segundo caso ignoramos atualizando o contador de ponto de leitura.
+Chamada por: monta
+Chama: pulaEspacos, pegaToken, transformaMaiusculo (para pegar e arrumar tokens), verificaRotulo (para ver se temos um rótulo), procuraTabelaDiretivas, procuraTabelaInstrucoes (para verificar se um token é uma diretiva ou uma instrução), incluiTabelaSimbolos (para incluir rótulos encontrados)
+Argumentos: fonte (para analisar a seção de texto), cont (para referência e para ser atualizado (contador de linhas e de programa, por exemplo)), flg (para indicar erros e enviar para outras funções), ts (para que seja possível procurar e atualizar), dir, instr (para que seja possível procurar palavras reservadas), td (enviada como argumento para outra função dentro dessa), obj (atualizado quando tratamos instruções), tu (atualizada quando temos símbolos definidos como externos) 
+Retorno: retornamos uma estrutura que permite que eu retorne todas as atualizações em todas as tabelas (já que todas elas podem ser possivelmente realocadas)
+*****************************************************************************************************************************************/
 panalise analisaLinhaText(char* fonte, contadores* cont, flags* flg, tabsimb* ts, tabdir* dir, tabdef* td, tabinstr* instr, objeto* obj, tabuso* tu) {
 
 	int r, d, i;
@@ -1023,7 +1106,11 @@ panalise analisaLinhaText(char* fonte, contadores* cont, flags* flg, tabsimb* ts
 	char* token1;
 	panalise retorno;	
 	
-	retorno.sectionend = 0;
+	retorno.sectionendT = 0; /*inicializando (para o caso de não haver realloc)*/
+	retorno.ts = ts;
+	retorno.td = td;
+	retorno.tu = tu;
+
  	pulaEspacos(fonte, cont);	
 	token = pegaToken(fonte, cont);
 	transformaMaiusculo(token, strlen(token));
@@ -1045,7 +1132,7 @@ panalise analisaLinhaText(char* fonte, contadores* cont, flags* flg, tabsimb* ts
 		d=procuraDiretiva(token,dir);
 
 		if(d>=0) {		
-			retorno.td = trataDiretivaText(fonte,r,d,ts,flg,td,((*cont).tamts)-1,cont,dir,instr,&(retorno.sectionend));
+			retorno.td = trataDiretivaText(fonte,r,d,ts,flg,td,((*cont).tamts)-1,cont,dir,instr,&(retorno.sectionendT));
 			td = retorno.td;
 		}
 		else {  
@@ -1056,18 +1143,24 @@ panalise analisaLinhaText(char* fonte, contadores* cont, flags* flg, tabsimb* ts
 				tu = retorno.tu;
 			}
 			else {	/*Caso depois de um rótulo(existente ou não) não tenhamos uma instrução ou uma diretiva*/
-				printf("Erro sintático, linha %d: linha não possui estrutura <rótulo>(<instrução>|<diretiva>)<operandos>\n", 						(*cont).contadorlinha);
-				(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token); /*Esse símbolo é algo inválido*/
+				r = verificaRotulo(token, cont); /*Não é diretiva nem instrução porque eu já verifiquei*/
+				if (r<0) {
+					(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token); /*Esse símbolo é algo inválido*/
+				}
+				printf("Erro sintático, linha %d: linha não possui estrutura <rótulo>(<instrução>|<diretiva>)<operandos>\n", (*cont).contadorlinha);
 			}							/*Ignoramos ele e seguimos em frente com a tradução*/
 		}
 	//free(token);	
 	return retorno;
 }
 
-/****************************************************************************************************************************************/
-/****************************************************************************************************************************************/
-
-void trataDiretivaData(char* fonte, objeto* obj, contadores* cont, flags* flg, tabdir* dir, tabinstr* instr, int posdirtab) {
+/*****************************************************************************************************************************************
+Essa função analisa o que devemos fazer após encontrarmos uma diretiva na seção da dados. As três diretivas permitidas são SPACE, CONST e END. Ou seja, se não temos nenhum desses casos, temos uma diretiva inválida para seção e um erro. Isso é indicado para que o objeto não seja gerado. Agora, se a nossa diretiva é CONST ou SPACE, precisamos ver qual é o token que segue. Vemos se o token é um número. Para o caso de CONST, se o token é um número inteiro qualquer (e não uma string) podemos atualizar o objeto. Se ele é uma string, não interessa muito o que é essa string: falta um argumento para CONST. Assumimos que essa string é algum token da próxima linha. Se a diretiva for SPACE, precisamos ser mais cautelosos. O número que segue não pode ser negativo e não pode ser zero, mas SPACE pode não ter argumentos. Logo, se tivermos 0 ou um número negativo, indicamos erro. Se temos uma string, assumimos SPACE 1. Se temos um valor positivo, incluímos em uma quantidade do objeto igual ao tamanho definido o valor 0. Note que eu uso a variável 'relativo' do objeto para indicar o espaço disponível a partir daquele ponto do vetor para aquela variável. A variável não é relativa, mas o seu endereço é. Por isso, uso esse valor como referência para verificar que o usuário estourou o espaço do vetor. Não há problemas de imprimir esses endereços em RELATIVES no executável final pois os relativos são avaliados até termos SECTION DATA. Se não temos SPACE ou CONST, existe a possibilidade de termos END. END indica o final do módulo e portanto o final do programa. A variável end recebe essa informação. Caso tenhamos um END sem definição de módulo, temos um erro. Caso tenhamos um END que já apareceu, temos um erro. Caso tenhamos texto seguindo esse END, temos um erro. Para o caso em que temos uma diretiva inválida para a seção de dados, verificamos qual é a diretiva ou se temos uma instrução, para ignorarmos completamente essa diretiva/instrução e seus operandos.
+Chamada por: analisaLinhaText
+Chama: pulaEspacos, pegaToken, transformaMaiusculo (para tratar tokens), procuraDiretiva, procuraInstrucao, verificaRotulo (apenas para verificar e ignorar linhas inválidas)
+Argumentos: fonte (para pegar tokens que seguem), obj (para atualizar o objeto no caso de SPACE e CONST), cont (para referência), flg (para indicar erros e verificar se é ou não um módulo), dir, instr (para referência na hora da procura), posdirtab (indica a posição da diretiva na tabela de diretivas para os condicionais), end (indica que encontramos END e por isso, acabou a seção)
+*****************************************************************************************************************************************/
+void trataDiretivaData(char* fonte, objeto* obj, contadores* cont, flags* flg, tabdir* dir, tabinstr* instr, int posdirtab, int* end) {
 
 	int n,m,r,i,d;
 	char* token;
@@ -1131,6 +1224,28 @@ void trataDiretivaData(char* fonte, objeto* obj, contadores* cont, flags* flg, t
 		}
 		//free(token);
 	}
+	else if (posdirtab == END) {
+		if(!(*flg).modulo) {
+			printf("Erro semântico, linha %d: diretiva END incluída em arquivo que não é módulo\n", (*cont).contadorlinha);
+			((*flg).erro)++;
+			(*end)--; /*Se não é um módulo, podemos continuar analisando. Como vou incrementar ali em baixo...*/
+		}
+		if(!(*flg).begin) {
+			printf("Erro semântico, linha %d: diretiva END sem BEGIN\n", (*cont).contadorlinha);
+			((*flg).erro)++;
+		}
+		if((*flg).end) {
+			printf("Erro semântico, linha %d: diretiva END já incluída\n", (*cont).contadorlinha);
+			((*flg).erro)++;
+		}
+		((*flg).end)++;
+		(*end)++;
+		pulaEspacos(fonte, cont);    				
+		token = pegaToken(fonte, cont);
+			if(strlen(token) > 0) {
+				printf("Erro semântico, linha %d: código após fim do módulo\n", (*cont).contadorlinha);
+			}
+	}
 	else {  /*Se a diretiva não é CONST ou SPACE temos que ignorar os argumentos (possíveis) que seguem*/
 		printf("Erro sintático, linha %d: diretiva inválida para seção de dados\n", (*cont).contadorlinha);
 		((*flg).erro)++;
@@ -1154,14 +1269,20 @@ void trataDiretivaData(char* fonte, objeto* obj, contadores* cont, flags* flg, t
 
 }
 
-
-tabsimb* analisaLinhaData(char* fonte, contadores* cont, objeto* obj, flags* flg, tabdir* dir, tabinstr* instr, tabsimb* ts) {
+/*****************************************************************************************************************************************
+Essa função analisa uma linha individual da seção de dados. Espera-se que uma linha da seção de dados tenha a forma: <rótulo>:SPACE<operando>|<rótulo>:CONST<operando>|END. Começamos pegando um token. Precisamos, antes de tudo, verificar se o token não é o '\0'. Se for esse o caso, chegamos ao final do arquivo, nenhuma análise deve ser feita. Caso contrário, deixamos o token todo maiúsculo e verificamos se ele é um rótulo e se ele é uma diretiva. Se ele é um rótulo, precisamos procurá-lo na tabela de símbolos. Se ele já está definido, temos um erro, pois o rótulo indica que ele deveria ser definido agora. Caso contrário, podemos encontrar o ponto na tabela de símbolos em que está o símbolo e o definimos. Se ele simplesmente não está incluído na tabela de símbolos, fazemos a inclusão. Pegamos então o próximo token, que deve ser uma diretiva. Essa diretiva é tratada em trataDiretivaData. Caso o primeiro token da linha não seja um rótulo, a diretiva será válida apenas se ela for o END, isso SE o programa for um módulo. Se esse primeiro símbolo não é um rótulo e nem uma diretiva, existe um símbolo inválido no meio da seção da dados. Note que da forma que a função foi arrumada, a seção de dados pode ficar vazia (não há avisos para seção de dados vazia).
+Chamada por: monta
+Chama: pulaEspacos, pegaToken, transformaMaiusculo (as três pegam e arrumam os tokens para análise), verificaRotulo (para ver se o símbolo é um rótulo), procuraDiretiva (para ver se o símbolo é uma diretiva), procuraTabeladeSimbolos (para saber o que fazer com possíveis símbolos encontrados), incluiTabelaSimbolos (para o caso de símbolos novos), trataDiretivaData (vai verificar se as diretivas encontradas estão de acordo com a seção), procuraInstrucao (apenas para informar símbolos inválidos)
+Argumentos: fonte (o objeto da nossa análise), cont (usado como referência, sempre sendo atualizado), obj (o objeto é atualizado aqui, afinal, teremos diretivas CONST e SPACE, possivelmente), flg (para indicar erros), dir (tabela de diretivas para referência), instr (tabela de instruções para referência), ts (tabela de símbolos para referência e inclusão), end (marcador que irá indicar quando eu cheguei ao final da seção de dados (para o caso de módulos))
+Retorno: a função retorna um ponteiro para a estrutura da tabela de símbolos, devido ao fato de que é possível haver a realocação do bloco de memória contendo a tabela de símbolos devido à possível inclusão de símbolos
+*****************************************************************************************************************************************/
+tabsimb* analisaLinhaData(char* fonte, contadores* cont, objeto* obj, flags* flg, tabdir* dir, tabinstr* instr, tabsimb* ts, int* end) {
 
 	int r,d,s,k,x,y,z;	
 	char* token;
 	tabsimb* simb;
 
-	simb = ts;
+	simb = ts; /*Eu preciso inicializar simb. Se ts não for atualizada e eu não inicializar simb eu retorno LIXO!!!*/
 	pulaEspacos(fonte, cont);	
 	token = pegaToken(fonte, cont);
 
@@ -1197,7 +1318,7 @@ tabsimb* analisaLinhaData(char* fonte, contadores* cont, objeto* obj, flags* flg
 				d = procuraDiretiva(token,dir); /*Vemos se é uma diretiva*/
 					if(d>=0) {  		/*Se é, analisamos a diretiva*/
 						(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);			
-						trataDiretivaData(fonte, obj, cont, flg, dir,instr,d);
+						trataDiretivaData(fonte, obj, cont, flg, dir,instr,d, end);
 					}
 					else {  		/*Se não é, temos um erro (pois essa é a seção de dados)*/
 						printf("Erro sintático, linha %d: argumento inválido para seção de dados\n",  							       (*cont).contadorlinha);
@@ -1209,7 +1330,7 @@ tabsimb* analisaLinhaData(char* fonte, contadores* cont, objeto* obj, flags* flg
 
 		}
 		else {  /*Se não é um rótulo*/
-			if(d>=0) { /*E é uma diretiva*/
+			if(d>=0 && d!=END) { /*E é uma diretiva*/
 				printf("Erro sintático, linha %d: diretiva inválida para essa seção ou não associada à nenhum rótulo",	(*cont).contadorlinha);
 				((*flg).erro)++;
 				(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);	
@@ -1231,6 +1352,10 @@ tabsimb* analisaLinhaData(char* fonte, contadores* cont, objeto* obj, flags* flg
 						}	
 					}
 			}
+			else if(d==END) {
+				(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);			
+				trataDiretivaData(fonte, obj, cont, flg, dir,instr,d, end);
+			}
 			else { /*Se não é um rótulo e não é uma diretiva*/
 				printf("Erro sintático, linha %d: símbolo inválido na seção de dados\n", (*cont).contadorlinha);
 				(*cont).pontodeleitura = (*cont).pontodeleitura + strlen(token);
@@ -1241,7 +1366,12 @@ tabsimb* analisaLinhaData(char* fonte, contadores* cont, objeto* obj, flags* flg
 
 	return simb;
 }
-
+/*****************************************************************************************************************************************
+Essa função é a função que atualiza os endereços de todas as variáveis criadas no programa além de verificar erros que não podem ser verificados em outros momentos (principalmente erros semânticos). Então, percorremos a tabela de símbolos para atualizar os endereços em que cada símbolo aparece no objeto. A lista é inserida na estrutura do objeto aonde o código normalmente ficaria. Vemos na tabela de símbolos o último endereço em que ele foi visto (lastaddr). A partir daí, vamos nessa posição do objeto e atualizamos o código que lá se encontra, somando ao valor de soma que pode vir a aparecer. Verificações feitas: vemos se a soma ultrapassa o limite permitido. Se o endereço é absoluto, não podemos percorrê-lo como um vetor. Se ele não for absoluto, precisamos ver o quanto podemos percorrer. Por isso usamos aux. Se o valor de soma do ponto em que estamos for maior do que o permitido, temos um erro de acesso à área inválida. Se um símbolo não é relativo, ele só pode ser constante, isso indica que, se a instrução que o precede é um DIV e a constante que ele representa é o valor 0, não podemos permitir tal divisão. Se a instrução anterior a ele for de PULO, precisamos indicar o erro de pulo à constante. Se a instrução que precede a instrução que o precede é um COPY, temos o valor de uma constante sendo alterado, o mesmo acontece se a instrução que o precede é um STORE. Vemos também se há um pulo para a seção de dados: instrução de pulo precedendo o nosso símbolo. Vemos se o símbolo está na seção de dados a partir do delimitador do fim da seção de texto. Esses são os erros analisados. Agora, se o símbolo nem foi encontrado na tabela de símbolos em primeiro lugar, temos o problema de um símbolo não definido. Ignoramos esse símbolo, pois, mesmo não escrevendo no arquivo destino, é necessário terminar de avaliar todos os casos, para que o usuário tenha acesso a todos os seus erros. 
+Chamada por: monta
+Chama: -
+Argumentos: obj (o arquivo objeto é o que estará sendo analisado), ts (para verificar todos os símbolos), cont (usa seus valores como referência), flg (para indicar erros que surgem)
+*****************************************************************************************************************************************/
 void arrumaObjeto(objeto* obj, tabsimb* ts, contadores* cont, flags* flg) {
 
 	int i, j, temp, aux;
@@ -1304,7 +1434,12 @@ void arrumaObjeto(objeto* obj, tabsimb* ts, contadores* cont, flags* flg) {
 
 }
 
-
+/*****************************************************************************************************************************************
+Para todos os elementos na tabela de definições, vemos se existe um equivalente na tabela de símbolo. A tabela de definição armazena os símbolos públicos. Aqui, devemos associar esses símbolos ao seu endereço real no código. Como o montador é de 1 passagem, podemos não ter os endereços definitivos até que se encerre a análise de todas as partes do código. Para um símbolo na td que possui um igual definido na ts, atualizamos o seu endereço. Para símbolos definidos na tabela de definições mas não definidos na tabela de símbolos temos um erro: símbolo não definido (símbolos públicos pertencem ao módulo em questão, eles precisam ser definidos!). Existe uma outra condição que mostra erro se o símbolo nem foi encontrado na tabela de símbolos, mas a princípio isso não deve acontecer, a não ser que o programa tenha um erro. Essa parte do condicional foi utilizada para testes.
+Chamada por: monta
+Chama: procuraTabelaSimbolos (para procurar os símbolos)
+Argumentos: ts (para que possa se fazer a pesquisa), td (a tabela de definições é o elemento principal dessa função, cont (usado como referência. Tem o tamanho da tabela de símbolos para que não haja acesso à áreas indevidas), flg (se temos um erro, precisamos atualizar essa estrutura))
+*****************************************************************************************************************************************/
 void arrumaTabDef(tabsimb* ts, tabdef* td, contadores* cont, flags* flg) { /*Colocando os endereços na tabela de definições*/
 
 	int i, j;
@@ -1330,6 +1465,12 @@ void arrumaTabDef(tabsimb* ts, tabdef* td, contadores* cont, flags* flg) { /*Col
 	}
 }
 
+/*****************************************************************************************************************************************
+Essa função tem o propósito de gerar o arquivo objeto, ou o executável, caso não seja um módulo. Tentamos abrir o arquivo e se não for possível, informamos ao usuário. Se for possível, temos duas possibilidades: se for um módulo, precisamos incluir no arquivo destino a tabela de uso, a tabela de definição, os endereços relativos e o código. Caso não seja módulo, precisamos apenas incluir o código. Para incluir a tabela de uso, percorremos a tabela e imprimos todos os símbolos e endereços em que eles aparecem. Para imprimir a tabela de definições fazemos o mesmo. Os endereços relativos estão definidos no próprio objeto, então, percorremos o objeto até o número de instrução que temos (armazenado em cont (a estrutura de contadores)) vendo, para cada endereço, se ele é relativo ou não. Finalmente, imprimimos o código, percorrendo a estrutura objeto mais uma vez.
+Chamada por: monta
+Chama: -
+Argumentos: obj (código objeto/executável), td, tu (tabelas para referência), arquivo (nome do arquivo em que será escrito o código), cont (usado como referência), flg (para identificar se é um módulo ou não)
+*****************************************************************************************************************************************/
 void printObjeto(objeto* obj, tabdef* td, tabuso* tu, char* arquivo, contadores* cont, flags* flg) { 	
 	
 	FILE* fp;
@@ -1377,6 +1518,12 @@ void printObjeto(objeto* obj, tabdef* td, tabuso* tu, char* arquivo, contadores*
 	fclose(fp);
 //	free(narq);	
 }
+/*****************************************************************************************************************************************
+Essa função é a função que começa o processo de montagem após o pré-processamento. Ela cria a tabela de instruções e a tabela de diretivas para referência, e ela cria as estruturas da tabela de símbolos, da tabela de definição e da tabela de uso. É claro que, inicialmente, elas começam vazias. Dois vetores auxiliares, contadores e flags também são criados pois eles serão utilizados para o acompanhamento da leitura do programa e para a identificação de erros. O vetor objeto também é criado, seu tamanho máximo sendo 216 por definição do Assembly inventado. A estrutura panalise é uma estrutura utilizada apenas para o retorno de funções quando é necessário retornar mais de um valor (vulgo, a estrutura de retorno de reallocs para a ts, a td e a tu). Com tudo inicializado, a primeira coisa a se fazer é procurar SECTION TEXT ou alguma definição de módulo seguido de SECTION TEXT. Essa é a função primeirosPassos(). Depois, temos um loop: enquanto não termina a seção de textos (determinado pela linha SECTION DATA) ou enquanto o arquivo fonte ainda pode ser lido, analisamos o programa, linha por linha. A cada análise de linha atualizamos o valor de ts, td e tu, pois pode ter ocorrido uma alocação ou realocação dentro dessa função caso tenha-se encontrado um novo símbolo (externo, público ou nenhum). Se o arquivo chegar ao final sem uma seção de dados, indicamos um erro. Depois, analisamos a seção de dados enquanto o arquivo não termina ou enquanto não é definido um END, para o caso de um módulo. O valor da tabela de símbolos é atualizado sempre que lemos uma linha. Depois de analisadas todas as seções, precisamos arrumar o código objeto, pois esse montador é o de 1 passagem. Precisamos atualizar os endereços para cada símbolo em TS. Depois, com os símbolos definidos, arrumamos a tabela de definição. Finalmente, se houver algum erro, não chamamos a função que imprime no arquivo. Se não houver erros, podemos chamar a função que imprime o objeto no arquivo. Liberamos a memória alocada.
+Chamada por: main
+Chama: montaTabelaInstrucoes, montaTabelaDiretivas, inicializaContadores, inicializaFlags, primeirosPassos, analisaLinhaText, analisaLinhaData, arrumaObjeto, arrumaTabDef, printObjeto
+Argumentos: fonte (arquivo com o código após pré-processamento), arquivo(nome do arquivo destino)
+*****************************************************************************************************************************************/
 
 void monta(char* fonte, char* arquivo) {
 	
@@ -1396,24 +1543,26 @@ void monta(char* fonte, char* arquivo) {
 	dir = montaTabelaDiretivas();
 	inicializaContadores(&cont);
 	inicializaFlags(&flg);
-//	inicializaObjeto(obj);
-	retorno.ts = NULL;
-	retorno.td = NULL;
-	retorno.tu = NULL;
-	retorno.sectionend = 0;
-	flg.erro = flg.erro + encontraSectionText(fonte, &cont);
-		while(!retorno.sectionend && fonte[cont.pontodeleitura] != '\0') { 
+//	inicializaObjeto(obj); não precisa, to fazendo calloc
+	retorno.ts = ts;
+	retorno.td = td;
+	retorno.tu = tu;
+	retorno.sectionendT = 0;
+	retorno.sectionendD = 0;
+	flg.erro = flg.erro + primeirosPassos(fonte, &cont, ts, &retorno, &flg);
+		while(!retorno.sectionendT && fonte[cont.pontodeleitura] != '\0') { 
 			retorno = analisaLinhaText(fonte, &cont, &flg, ts, dir, td, instr, obj, tu);
 			ts = retorno.ts;
 			td = retorno.td;
+			tu = retorno.tu;
 		}
 		flg.fimtext = cont.contadorinstr;
-		if(!retorno.sectionend && fonte[cont.pontodeleitura] == '\0') {
+		if(!retorno.sectionendT && fonte[cont.pontodeleitura] == '\0') {
 			printf("Erro sintático, linha %d: não há seção de dados\n", cont.contadorlinha);
 		}
 		else {
-			while(fonte[cont.pontodeleitura] != '\0') {
-				ts = analisaLinhaData(fonte, &cont, obj, &flg, dir, instr, ts);
+			while(fonte[cont.pontodeleitura] != '\0' || !retorno.sectionendD) {
+				ts = analisaLinhaData(fonte, &cont, obj, &flg, dir, instr, ts, &(retorno.sectionendD));
 			}
 		}
 	arrumaObjeto(obj, ts, &cont, &flg);
@@ -1427,9 +1576,10 @@ void monta(char* fonte, char* arquivo) {
 
 	free(instr);
 	free(dir);
-//	free(td);
-//	free(tu);
-//	free(obj);
+	free(td);
+	free(tu);
+	free(ts);
+	free(obj);
 
 }
 /*TESTES*********************************************************************************************************************************/
@@ -1439,12 +1589,12 @@ int main() {
 
 //	char* fonte;
 //	char* arquivo;
-//
+
 //	fonte = (char*) calloc(200, sizeof(char));
 //	arquivo = (char*) calloc (6, sizeof(char));
-//
+
 //	strcpy(arquivo,"teste");
-//	strcpy(fonte,"SECTION TEXT\nLOAD J\nM:\n\n INPUT N\nCOPY N, K\nADD K + 2\nJMPZ M\n\nSTOP\nSection Data\nN: space \nK: space 3 \nJ: CONST 0\0");
+//	strcpy(fonte,"MOD_B: BEGIN\nSECTION TEXT\nA: EXTERN\nL1: EXTERN\nPUBLIC R\nPUBLIC MOD_B\nLOAD A\nMULT B\nSTORE R\nDIV DOIS\nSTORE R + 1\nJMP L1\nSECTION DATA\nR: SPACE 2\nDOIS: CONST 2\nB: SPACE\nEND ");
 
 //	monta(fonte, arquivo);
 	return 0;
