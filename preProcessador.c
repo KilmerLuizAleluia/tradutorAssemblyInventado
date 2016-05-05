@@ -267,7 +267,7 @@ void ignorar_proxima_linha(FILE* fp, contadores* cont, char* codigo_apos_pre_pro
 
     /*haverão dois \n. Um deles é após o IF, o outro é o que deve ser ignorado*/
     while((caracter = fgetc(fp)) != '\n');
-    while((caracter = fgetc(fp)) != '\n');
+//    while((caracter = fgetc(fp)) != '\n');  
     
     codigo_apos_pre_processamento[size] = '\n';
     codigo_apos_pre_processamento[size + 1] = '\n';
@@ -359,7 +359,7 @@ void tratamento_if(FILE *fp, char* token, int indice_mapa, map* mapa, char* codi
     conferir_espaco_branco(fp, codigo_apos_pre_processamento, cont);
     if(conferir_quebra_linha(fp, codigo_apos_pre_processamento, cont) == 0){
         encontrado = 0;
-        printf("Erro sintático, linha %d. Operador IF com número inválido de operandos. Apenas o primeiro operando será considerado.\n", (*cont).contador_linha);
+        printf("Erro sintático, linha %d: operador IF com número inválido de operandos. Apenas o primeiro operando será considerado.\n", (*cont).contador_linha);
         while( ((ignorador = fgetc(fp)) != EOF) &&  ignorador != '\n');
 
         /* No if abaixo, significa que o arquivo terminou*/
@@ -375,7 +375,11 @@ void tratamento_if(FILE *fp, char* token, int indice_mapa, map* mapa, char* codi
     }
 
     /* Nesse caso a diretiva IF estava falsa*/
-    if(!encontrado){
+    if(!encontrado || (encontrado && atoi(mapa[j].value) < 1)){
+	if (!encontrado) {
+		printf("Erro semântico, linha %d: operador IF possui operando não definido.\n ", (*cont).contador_linha);
+        	(*flgs).erro++;
+	}
         ignorar_proxima_linha(fp, cont, codigo_apos_pre_processamento);
     }
 
