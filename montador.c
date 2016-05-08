@@ -1835,9 +1835,11 @@ void printObjeto(objeto* obj, tabdef* td, tabuso* tu, char* arquivo, contadores*
 	
 	FILE* fp;
 	int i;
-	char* narq = (char*) calloc (sizeof(char), (4+strlen(arquivo)));
+	char* narq = (char*) calloc (sizeof(char), (3+strlen(arquivo)));
 
 	strcpy(narq, arquivo);
+	if((*flg).modulo) { strcat(narq, ".o"); }
+	else { strcat(narq, ".e"); }
 
 	fp = fopen(narq, "w+");
 	
@@ -1875,7 +1877,7 @@ void printObjeto(objeto* obj, tabdef* td, tabuso* tu, char* arquivo, contadores*
 	}
 	
 	fclose(fp);
-//	free(narq);	
+	free(narq);	
 }
 /*****************************************************************************************************************************************
 Essa função é a função que começa o processo de montagem após o pré-processamento. Ela cria a tabela de instruções e a tabela de diretivas para referência, e ela cria as estruturas da tabela de símbolos, da tabela de definição e da tabela de uso. É claro que, inicialmente, elas começam vazias. Dois vetores auxiliares, contadores e flags também são criados pois eles serão utilizados para o acompanhamento da leitura do programa e para a identificação de erros. O vetor objeto também é criado, seu tamanho máximo sendo 216 por definição do Assembly inventado. A estrutura panalise é uma estrutura utilizada apenas para o retorno de funções quando é necessário retornar mais de um valor (vulgo, a estrutura de retorno de reallocs para a ts, a td e a tu). Com tudo inicializado, a primeira coisa a se fazer é procurar SECTION TEXT ou alguma definição de módulo seguido de SECTION TEXT. Essa é a função primeirosPassos(). Depois, temos um loop: enquanto não termina a seção de textos (determinado pela linha SECTION DATA) ou enquanto o arquivo fonte ainda pode ser lido, analisamos o programa, linha por linha. A cada análise de linha atualizamos o valor de ts, td e tu, pois pode ter ocorrido uma alocação ou realocação dentro dessa função caso tenha-se encontrado um novo símbolo (externo, público ou nenhum). Se o arquivo chegar ao final sem uma seção de dados, indicamos um erro. Depois, analisamos a seção de dados enquanto o arquivo não termina ou enquanto não é definido um END, para o caso de um módulo. O valor da tabela de símbolos é atualizado sempre que lemos uma linha. Depois de analisadas todas as seções, precisamos arrumar o código objeto, pois esse montador é o de 1 passagem. Precisamos atualizar os endereços para cada símbolo em TS. Depois, com os símbolos definidos, arrumamos a tabela de definição. Finalmente, se houver algum erro, não chamamos a função que imprime no arquivo. Se não houver erros, podemos chamar a função que imprime o objeto no arquivo. Liberamos a memória alocada.
@@ -1958,42 +1960,44 @@ int main(int argc, char* argv[]) {
       int filenamesize;
       contadores cont;
       flags flgs;
-      
-      filenamesize = strlen(argv[1]);
-      arquivoL = (char*) calloc (filenamesize + 5, sizeof(char));
-      arquivoE = (char*) calloc (filenamesize + 5, sizeof(char));
-      strcpy(arquivoL,argv[1]);
-      strcat(arquivoL, ".asm");
-      strcpy(arquivoE,argv[1]);
-      strcat(arquivoE, ".txt");
-      arquivoE[filenamesize + 4] = '\0';
 
-      inicializaContadores(&cont);
-      inicializaFlags(&flgs);
-
-      fp = fopen(arquivoL, "r");
-      if (fp == NULL) {
-           printf("Arquivo inexistente! Impossível montar. Por favor, tente novamente com outro arquivo.\n");
+      if (argc<2) {
+	  printf("\nPrograma chamado com o número errado de argumentos. Por favor, tente novamente\n\n");
       }
       else {
-      /* Tamanho máximo do codigo_apos_pre_processamento.*/
-	      fseek(fp, 0L, SEEK_END);
-	      tamanho_para_alocar = ftell(fp);
-	      rewind(fp);
-	      codigo_apos_pre_processamento = (char*) calloc(tamanho_para_alocar,sizeof(char));   	      
-	      if (fp) {
-	          pre_processador(fp, token, codigo_apos_pre_processamento, &cont, &flgs);
-		  printf("\n\n%s\n\n", codigo_apos_pre_processamento);
-		  fclose(fp);
-      	      }
+	      filenamesize = strlen(argv[1]);
+	      arquivoL = (char*) calloc (filenamesize + 5, sizeof(char));
+	      arquivoE = (char*) calloc (filenamesize + 1, sizeof(char));
+	      strcpy(arquivoL,argv[1]);
+	      strcat(arquivoL, ".asm");
+	      strcpy(arquivoE,argv[1]);
+	      arquivoE[filenamesize] = '\0';
 
-              monta(codigo_apos_pre_processamento, arquivoE, flgs.erro);
+	      inicializaContadores(&cont);
+	      inicializaFlags(&flgs);
 
-	      free(arquivoL);
-              free(arquivoE);
-      	      free(codigo_apos_pre_processamento);
+	      fp = fopen(arquivoL, "r");
+	      if (fp == NULL) {
+		   printf("Arquivo inexistente! Impossível montar. Por favor, tente novamente com outro arquivo.\n");
+	      }
+	      else {
+	      /* Tamanho máximo do codigo_apos_pre_processamento.*/
+		      fseek(fp, 0L, SEEK_END);
+		      tamanho_para_alocar = ftell(fp);
+		      rewind(fp);
+		      codigo_apos_pre_processamento = (char*) calloc(tamanho_para_alocar,sizeof(char));   	      
+		      if (fp) {
+			  pre_processador(fp, token, codigo_apos_pre_processamento, &cont, &flgs);
+			  fclose(fp);
+	      	      }
+
+		      monta(codigo_apos_pre_processamento, arquivoE, flgs.erro);
+
+		      free(arquivoL);
+		      free(arquivoE);
+	      	      free(codigo_apos_pre_processamento);
+	      }
       }
-      
       return 0;
  
 }
